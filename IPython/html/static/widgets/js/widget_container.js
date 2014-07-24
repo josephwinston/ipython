@@ -1,30 +1,20 @@
-//----------------------------------------------------------------------------
-//  Copyright (C) 2013 The IPython Development Team
-//
-//  Distributed under the terms of the BSD License.  The full license is in
-//  the file COPYING, distributed as part of this software.
-//----------------------------------------------------------------------------
+// Copyright (c) IPython Development Team.
+// Distributed under the terms of the Modified BSD License.
 
-//============================================================================
-// ContainerWidget
-//============================================================================
+define([
+    "widgets/js/widget",
+    "jqueryui",
+    "bootstrap",
+], function(widget, $){
 
-/**
- * @module IPython
- * @namespace IPython
- **/
-
-define(["widgets/js/widget"], function(WidgetManager) {
-
-    var ContainerView = IPython.DOMWidgetView.extend({
+    var ContainerView = widget.DOMWidgetView.extend({
         render: function(){
             // Called when view is rendered.
             this.$el.addClass('widget-container')
                 .addClass('vbox');
-            this.children={};
-            this.update_children([], this.model.get('_children'));
-            this.model.on('change:_children', function(model, value, options) {
-                this.update_children(model.previous('_children'), value);
+            this.update_children([], this.model.get('children'));
+            this.model.on('change:children', function(model, value, options) {
+                this.update_children(model.previous('children'), value);
             }, this);
             this.update();
         },
@@ -39,14 +29,18 @@ define(["widgets/js/widget"], function(WidgetManager) {
 
         remove_child_model: function(model) {
             // Called when a model is removed from the children list.
-            this.child_views[model.id].remove();
-            this.delete_child_view(model);
+            this.pop_child_view(model).remove();
         },
 
         add_child_model: function(model) {
             // Called when a model is added to the children list.
             var view = this.create_child_view(model);
             this.$el.append(view.$el);
+
+            // Trigger the displayed event once this view is displayed.
+            this.after_displayed(function() {
+                view.trigger('displayed');
+            });
         },
         
         update: function(){
@@ -58,20 +52,24 @@ define(["widgets/js/widget"], function(WidgetManager) {
         },
     });
     
-    WidgetManager.register_widget_view('ContainerView', ContainerView);
-    
-    var PopupView = IPython.DOMWidgetView.extend({
+
+    var PopupView = widget.DOMWidgetView.extend({
         render: function(){
             // Called when view is rendered.
             var that = this;
-            this.children={};
             
             this.$el.on("remove", function(){
-                    that.$window.remove();
+                    that.$backdrop.remove();
                 });
-            this.$window = $('<div />')
-                .addClass('modal widget-modal')
+            this.$backdrop = $('<div />')
                 .appendTo($('#notebook-container'))
+                .addClass('modal-dialog')
+                .css('position', 'absolute')
+                .css('left', '0px')
+                .css('top', '0px');
+            this.$window = $('<div />')
+                .appendTo(this.$backdrop)
+                .addClass('modal-content widget-modal')
                 .mousedown(function(){
                     that.bring_to_front();
                 });
@@ -81,7 +79,7 @@ define(["widgets/js/widget"], function(WidgetManager) {
             // need to know about all of the top-level widgets.  The IPython
             // widget manager uses this to register the elements with the
             // keyboard manager.
-            this.additional_elements = [this.$window]
+            this.additional_elements = [this.$window];
 
             this.$title_bar = $('<div />')
                 .addClass('popover-title')
@@ -110,7 +108,7 @@ define(["widgets/js/widget"], function(WidgetManager) {
                         that.$window
                             .draggable('destroy')
                             .resizable('destroy')
-                            .removeClass('widget-modal modal')
+                            .removeClass('widget-modal modal-content')
                             .addClass('docked-widget-modal')
                             .detach()
                             .insertBefore(that.$show_button);
@@ -123,9 +121,9 @@ define(["widgets/js/widget"], function(WidgetManager) {
 
                         that.$window
                             .removeClass('docked-widget-modal')
-                            .addClass('widget-modal modal')
+                            .addClass('widget-modal modal-content')
                             .detach()
-                            .appendTo($('#notebook-container'))
+                            .appendTo(that.$backdrop)
                             .draggable({handle: '.popover-title', snap: '#notebook, .modal', snapMode: 'both'})
                             .resizable()
                             .children('.ui-resizable-handle').show();
@@ -164,9 +162,9 @@ define(["widgets/js/widget"], function(WidgetManager) {
             this._shown_once = false;
             this.popped_out = true;
 
-            this.update_children([], this.model.get('_children'));
-            this.model.on('change:_children', function(model, value, options) {
-                this.update_children(model.previous('_children'), value);
+            this.update_children([], this.model.get('children'));
+            this.model.on('change:children', function(model, value, options) {
+                this.update_children(model.previous('children'), value);
             }, this);
             this.update();
         },
@@ -195,12 +193,15 @@ define(["widgets/js/widget"], function(WidgetManager) {
             var $widget_modals = $(".widget-modal");
             var max_zindex = 0;
             $widget_modals.each(function (index, el){
-                max_zindex = Math.max(max_zindex, parseInt($(el).css('z-index')));
+                var zindex = parseInt($(el).css('z-index'));
+                if (!isNaN(zindex)) {
+                    max_zindex = Math.max(max_zindex, zindex);
+                }
             });
             
             // Start z-index of widget modals at 2000
             max_zindex = Math.max(max_zindex, 2000);
-
+            
             $widget_modals.each(function (index, el){
                 $el = $(el);
                 if (max_zindex == parseInt($el.css('z-index'))) {
@@ -220,14 +221,18 @@ define(["widgets/js/widget"], function(WidgetManager) {
 
         remove_child_model: function(model) {
             // Called when a child is removed from children list.
-            this.child_views[model.id].remove();
-            this.delete_child_view(model);
+            this.pop_child_view(model).remove();
         },
 
         add_child_model: function(model) {
             // Called when a child is added to children list.
             var view = this.create_child_view(model);
             this.$body.append(view.$el);
+
+            // Trigger the displayed event once this view is displayed.
+            this.after_displayed(function() {
+                view.trigger('displayed');
+            });
         },
         
         update: function(){
@@ -240,6 +245,7 @@ define(["widgets/js/widget"], function(WidgetManager) {
                 this.$title.html("&nbsp;"); // Preserve title height
             } else {
                 this.$title.text(description);
+                MathJax.Hub.Queue(["Typeset",MathJax.Hub,this.$title.get(0)]);
             }
             
             var button_text = this.model.get('button_text');
@@ -278,5 +284,9 @@ define(["widgets/js/widget"], function(WidgetManager) {
             }
         },
     });
-    WidgetManager.register_widget_view('PopupView', PopupView);
+
+    return {
+        'ContainerView': ContainerView,
+        'PopupView': PopupView,
+    };
 });

@@ -1,22 +1,14 @@
-//----------------------------------------------------------------------------
-//  Copyright (C) 2013 The IPython Development Team
-//
-//  Distributed under the terms of the BSD License.  The full license is in
-//  the file COPYING, distributed as part of this software.
-//----------------------------------------------------------------------------
+// Copyright (c) IPython Development Team.
+// Distributed under the terms of the Modified BSD License.
 
-//============================================================================
-// SelectionWidget
-//============================================================================
+define([
+    "widgets/js/widget",
+    "base/js/utils",
+    "jquery",
+    "bootstrap",
+], function(widget, utils, $){
 
-/**
- * @module IPython
- * @namespace IPython
- **/
-
-define(["widgets/js/widget"], function(WidgetManager){
-
-    var DropdownView = IPython.DOMWidgetView.extend({
+    var DropdownView = widget.DOMWidgetView.extend({
         render : function(){
             // Called when view is rendered.
             this.$el
@@ -31,12 +23,12 @@ define(["widgets/js/widget"], function(WidgetManager){
                 .appendTo(this.$el);
             this.$el_to_style = this.$buttongroup; // Set default element to style
             this.$droplabel = $('<button />')
-                .addClass('btn')
+                .addClass('btn btn-default')
                 .addClass('widget-combo-btn')
                 .html("&nbsp;")
                 .appendTo(this.$buttongroup);
             this.$dropbutton = $('<button />')
-                .addClass('btn')
+                .addClass('btn btn-default')
                 .addClass('dropdown-toggle')
                 .addClass('widget-combo-carrot-btn')
                 .attr('data-toggle', 'dropdown')
@@ -96,6 +88,7 @@ define(["widgets/js/widget"], function(WidgetManager){
                     this.$label.hide();
                 } else {
                     this.$label.text(description);
+                    MathJax.Hub.Queue(["Typeset",MathJax.Hub,this.$label.get(0)]);
                     this.$label.show();
                 }
             }
@@ -112,10 +105,9 @@ define(["widgets/js/widget"], function(WidgetManager){
         },
         
     });
-    WidgetManager.register_widget_view('DropdownView', DropdownView);
 
 
-    var RadioButtonsView = IPython.DOMWidgetView.extend({    
+    var RadioButtonsView = widget.DOMWidgetView.extend({    
         render : function(){
             // Called when view is rendered.
             this.$el
@@ -187,6 +179,7 @@ define(["widgets/js/widget"], function(WidgetManager){
                     this.$label.hide();
                 } else {
                     this.$label.text(description);
+                    MathJax.Hub.Queue(["Typeset",MathJax.Hub,this.$label.get(0)]);
                     this.$label.show();
                 }
             }
@@ -202,10 +195,9 @@ define(["widgets/js/widget"], function(WidgetManager){
             this.touch();
         },
     });
-    WidgetManager.register_widget_view('RadioButtonsView', RadioButtonsView);
+    
 
-
-    var ToggleButtonsView = IPython.DOMWidgetView.extend({
+    var ToggleButtonsView = widget.DOMWidgetView.extend({
         render : function(){
             // Called when view is rendered.
             this.$el
@@ -237,14 +229,14 @@ define(["widgets/js/widget"], function(WidgetManager){
                     if (item.trim().length == 0) {
                         item_html = "&nbsp;";
                     } else {
-                        item_html = IPython.utils.escape_html(item);
+                        item_html = utils.escape_html(item);
                     }
                     var item_query = '[data-value="' + item + '"]';
                     var $item_element = that.$buttongroup.find(item_query);
                     if (!$item_element.length) {
                         $item_element = $('<button/>')
                             .attr('type', 'button')
-                            .addClass('btn')
+                            .addClass('btn btn-default')
                             .html(item_html)
                             .appendTo(that.$buttongroup)
                             .attr('data-value', item)
@@ -279,6 +271,7 @@ define(["widgets/js/widget"], function(WidgetManager){
                     this.$label.hide();
                 } else {
                     this.$label.text(description);
+                    MathJax.Hub.Queue(["Typeset",MathJax.Hub,this.$label.get(0)]);
                     this.$label.show();
                 }
             }
@@ -294,10 +287,9 @@ define(["widgets/js/widget"], function(WidgetManager){
             this.touch();
         },    
     });
-    WidgetManager.register_widget_view('ToggleButtonsView', ToggleButtonsView);
+    
 
-
-    var SelectView = IPython.DOMWidgetView.extend({    
+    var SelectView = widget.DOMWidgetView.extend({    
         render : function(){
             // Called when view is rendered.
             this.$el
@@ -307,7 +299,7 @@ define(["widgets/js/widget"], function(WidgetManager){
                 .addClass('widget-hlabel')
                 .hide();
             this.$listbox = $('<select />')
-                .addClass('widget-listbox')
+                .addClass('widget-listbox form-control')
                 .attr('size', 6)
                 .appendTo(this.$el);
             this.$el_to_style = this.$listbox; // Set default element to style
@@ -362,6 +354,7 @@ define(["widgets/js/widget"], function(WidgetManager){
                     this.$label.hide();
                 } else {
                     this.$label.text(description);
+                    MathJax.Hub.Queue(["Typeset",MathJax.Hub,this.$label.get(0)]);
                     this.$label.show();
                 }
             }
@@ -377,5 +370,11 @@ define(["widgets/js/widget"], function(WidgetManager){
             this.touch();
         },    
     });
-    WidgetManager.register_widget_view('SelectView', SelectView);
+    
+    return {
+        'DropdownView': DropdownView,
+        'RadioButtonsView': RadioButtonsView,
+        'ToggleButtonsView': ToggleButtonsView,
+        'SelectView': SelectView,
+    };
 });

@@ -1,23 +1,29 @@
-//----------------------------------------------------------------------------
-//  Copyright (C) 2011  The IPython Development Team
-//
-//  Distributed under the terms of the BSD License.  The full license is in
-//  the file COPYING, distributed as part of this software.
-//----------------------------------------------------------------------------
+// Copyright (c) IPython Development Team.
+// Distributed under the terms of the Modified BSD License.
 
-//============================================================================
-// NotebookList
-//============================================================================
-
-var IPython = (function (IPython) {
+define([
+    'base/js/namespace',
+    'jquery',
+    'base/js/utils',
+    'base/js/dialog',
+], function(IPython, $, utils, dialog) {
     "use strict";
     
-    var utils = IPython.utils;
-
-    var NotebookList = function (selector, options, element_name) {
-        var that = this
+    var NotebookList = function (selector, options) {
+        // Constructor
+        //
+        // Parameters:
+        //  selector: string
+        //  options: dictionary
+        //      Dictionary of keyword arguments.
+        //          session_list: SessionList instance
+        //          element_name: string
+        //          base_url: string
+        //          notebook_path: string
+        var that = this;
+        this.session_list = options.session_list;
         // allow code re-use by just changing element_name in kernellist.js
-        this.element_name = element_name || 'notebook';
+        this.element_name = options.element_name || 'notebook';
         this.selector = selector;
         if (this.selector !== undefined) {
             this.element = $(selector);
@@ -28,12 +34,14 @@ var IPython = (function (IPython) {
         this.sessions = {};
         this.base_url = options.base_url || utils.get_body_data("baseUrl");
         this.notebook_path = options.notebook_path || utils.get_body_data("notebookPath");
-        $([IPython.events]).on('sessions_loaded.Dashboard', 
-            function(e, d) { that.sessions_loaded(d); });
+        if (this.session_list && this.session_list.events) {
+            this.session_list.events.on('sessions_loaded.Dashboard', 
+                function(e, d) { that.sessions_loaded(d); });
+        }
     };
 
     NotebookList.prototype.style = function () {
-        var prefix = '#' + this.element_name
+        var prefix = '#' + this.element_name;
         $(prefix + '_toolbar').addClass('list_toolbar');
         $(prefix + '_list_info').addClass('toolbar_info');
         $(prefix + '_buttons').addClass('toolbar_buttons');
@@ -84,10 +92,10 @@ var IPython = (function (IPython) {
                     that.add_upload_button(nbitem);
                 };
             } else {
-                var dialog = 'Uploaded notebooks must be .ipynb files';
-                IPython.dialog.modal({
+                var dialog_body = 'Uploaded notebooks must be .ipynb files';
+                dialog.modal({
                     title : 'Invalid file type',
-                    body : dialog,
+                    body : dialog_body,
                     buttons : {'OK' : {'class' : 'btn-primary'}}
                 });
             }
@@ -114,7 +122,7 @@ var IPython = (function (IPython) {
     };
 
     NotebookList.prototype.load_sessions = function(){
-        IPython.session_list.load_sessions();
+        this.session_list.load_sessions();
     };
 
 
@@ -189,10 +197,10 @@ var IPython = (function (IPython) {
 
 
     NotebookList.prototype.new_notebook_item = function (index) {
-        var item = $('<div/>').addClass("list_item").addClass("row-fluid");
+        var item = $('<div/>').addClass("list_item").addClass("row");
         // item.addClass('list_item ui-widget ui-widget-content ui-helper-clearfix');
         // item.css('border-top-style','none');
-        item.append($("<div/>").addClass("span12").append(
+        item.append($("<div/>").addClass("col-md-12").append(
             $('<i/>').addClass('item_icon')
         ).append(
             $("<a/>").addClass("item_link").append(
@@ -265,7 +273,7 @@ var IPython = (function (IPython) {
 
     NotebookList.prototype.add_shutdown_button = function (item, session) {
         var that = this;
-        var shutdown_button = $("<button/>").text("Shutdown").addClass("btn btn-mini btn-danger").
+        var shutdown_button = $("<button/>").text("Shutdown").addClass("btn btn-xs btn-danger").
             click(function (e) {
                 var settings = {
                     processData : false,
@@ -292,7 +300,7 @@ var IPython = (function (IPython) {
     NotebookList.prototype.add_delete_button = function (item) {
         var new_buttons = $('<span/>').addClass("btn-group pull-right");
         var notebooklist = this;
-        var delete_button = $("<button/>").text("Delete").addClass("btn btn-mini").
+        var delete_button = $("<button/>").text("Delete").addClass("btn btn-default btn-xs").
             click(function (e) {
                 // $(this) is the button that was clicked.
                 var that = $(this);
@@ -301,7 +309,7 @@ var IPython = (function (IPython) {
                 var parent_item = that.parents('div.list_item');
                 var nbname = parent_item.data('nbname');
                 var message = 'Are you sure you want to permanently delete the notebook: ' + nbname + '?';
-                IPython.dialog.modal({
+                dialog.modal({
                     title : "Delete notebook",
                     body : message,
                     buttons : {
@@ -339,7 +347,7 @@ var IPython = (function (IPython) {
     NotebookList.prototype.add_upload_button = function (item) {
         var that = this;
         var upload_button = $('<button/>').text("Upload")
-            .addClass('btn btn-primary btn-mini upload_button')
+            .addClass('btn btn-primary btn-xs upload_button')
             .click(function (e) {
                 var nbname = item.find('.item_name > input').val();
                 if (nbname.slice(nbname.length-6, nbname.length) != ".ipynb") {
@@ -375,7 +383,7 @@ var IPython = (function (IPython) {
                 return false;
             });
         var cancel_button = $('<button/>').text("Cancel")
-            .addClass("btn btn-mini")
+            .addClass("btn btn-default btn-xs")
             .click(function (e) {
                 console.log('cancel click');
                 item.remove();
@@ -426,16 +434,15 @@ var IPython = (function (IPython) {
         } else {
             msg = xhr.statusText;
         }
-        IPython.dialog.modal({
+        dialog.modal({
             title : 'Creating Notebook Failed',
             body : "The error was: " + msg,
             buttons : {'OK' : {'class' : 'btn-primary'}}
         });
-    }
+    };
     
-    
+    // Backwards compatability.    
     IPython.NotebookList = NotebookList;
 
-    return IPython;
-
-}(IPython));
+    return {'NotebookList': NotebookList};
+});

@@ -393,8 +393,15 @@ class InteractiveShell(SingletonConfigurable):
             '"\e[B": history-search-forward',
             '"\C-k": kill-line',
             '"\C-u": unix-line-discard',
-        ], allow_none=False, config=True)
-
+        ], config=True)
+    
+    _custom_readline_config = False
+    
+    def _readline_parse_and_bind_changed(self, name, old, new):
+        # notice that readline config is customized
+        # indicates that it should have higher priority than inputrc
+        self._custom_readline_config = True
+    
     ast_node_interactivity = Enum(['all', 'last', 'last_expr', 'none'],
                                   default_value='last_expr', config=True, 
                                   help="""
@@ -1436,10 +1443,16 @@ class InteractiveShell(SingletonConfigurable):
                 continue
             else:
                 #print 'oname_rest:', oname_rest  # dbg
-                for part in oname_rest:
+                for idx, part in enumerate(oname_rest):
                     try:
                         parent = obj
-                        obj = getattr(obj,part)
+                        # The last part is looked up in a special way to avoid
+                        # descriptor invocation as it may raise or have side
+                        # effects.
+                        if idx == len(oname_rest) - 1:
+                            obj = self._getattr_property(obj, part)
+                        else:
+                            obj = getattr(obj, part)
                     except:
                         # Blanket except b/c some badly implemented objects
                         # allow __getattr__ to raise exceptions other than
@@ -1479,33 +1492,48 @@ class InteractiveShell(SingletonConfigurable):
         return {'found':found, 'obj':obj, 'namespace':ospace,
                 'ismagic':ismagic, 'isalias':isalias, 'parent':parent}
 
-    def _ofind_property(self, oname, info):
-        """Second part of object finding, to look for property details."""
-        if info.found:
-            # Get the docstring of the class property if it exists.
-            path = oname.split('.')
-            root = '.'.join(path[:-1])
-            if info.parent is not None:
-                try:
-                    target = getattr(info.parent, '__class__')
-                    # The object belongs to a class instance.
-                    try:
-                        target = getattr(target, path[-1])
-                        # The class defines the object.
-                        if isinstance(target, property):
-                            oname = root + '.__class__.' + path[-1]
-                            info = Struct(self._ofind(oname))
-                    except AttributeError: pass
-                except AttributeError: pass
+    @staticmethod
+    def _getattr_property(obj, attrname):
+        """Property-aware getattr to use in object finding.
 
-        # We return either the new info or the unmodified input if the object
-        # hadn't been found
-        return info
+        If attrname represents a property, return it unevaluated (in case it has
+        side effects or raises an error.
+
+        """
+        if not isinstance(obj, type):
+            try:
+                # `getattr(type(obj), attrname)` is not guaranteed to return
+                # `obj`, but does so for property:
+                #
+                # property.__get__(self, None, cls) -> self
+                #
+                # The universal alternative is to traverse the mro manually
+                # searching for attrname in class dicts.
+                attr = getattr(type(obj), attrname)
+            except AttributeError:
+                pass
+            else:
+                # This relies on the fact that data descriptors (with both
+                # __get__ & __set__ magic methods) take precedence over
+                # instance-level attributes:
+                #
+                #    class A(object):
+                #        @property
+                #        def foobar(self): return 123
+                #    a = A()
+                #    a.__dict__['foobar'] = 345
+                #    a.foobar  # == 123
+                #
+                # So, a property may be returned right away.
+                if isinstance(attr, property):
+                    return attr
+
+        # Nothing helped, fall back.
+        return getattr(obj, attrname)
 
     def _object_find(self, oname, namespaces=None):
         """Find an object and return a struct with info about it."""
-        inf = Struct(self._ofind(oname, namespaces))
-        return Struct(self._ofind_property(oname, inf))
+        return Struct(self._ofind(oname, namespaces))
 
     def _inspect(self, meth, oname, namespaces=None, **kw):
         """Generic interface to the inspector system.
@@ -1707,7 +1735,7 @@ class InteractiveShell(SingletonConfigurable):
       This hook should be used sparingly, only in places which are not likely
       to be true IPython errors.
       """
-      self.showtraceback((etype,value,tb),tb_offset=0)
+      self.showtraceback((etype, value, tb), tb_offset=0)
 
     def _get_exc_info(self, exc_tuple=None):
         """get exc_info from a given tuple, sys.exc_info() or sys.last_type etc.
@@ -1748,7 +1776,7 @@ class InteractiveShell(SingletonConfigurable):
         """
         self.write_err("UsageError: %s" % exc)
     
-    def showtraceback(self,exc_tuple = None,filename=None,tb_offset=None,
+    def showtraceback(self, exc_tuple=None, filename=None, tb_offset=None,
                       exception_only=False):
         """Display the exception that just occurred.
 
@@ -1877,6 +1905,17 @@ class InteractiveShell(SingletonConfigurable):
             else:
                 self.readline_startup_hook = readline.set_startup_hook
 
+            # Readline config order:
+            # - IPython config (default value)
+            # - custom inputrc
+            # - IPython config (user customized)
+            
+            # load IPython config before inputrc if default
+            # skip if libedit because parse_and_bind syntax is different
+            if not self._custom_readline_config and not readline.uses_libedit:
+                for rlcommand in self.readline_parse_and_bind:
+                    readline.parse_and_bind(rlcommand)
+
             # Load user's initrc file (readline config)
             # Or if libedit is used, load editrc.
             inputrc_name = os.environ.get('INPUTRC')
@@ -1891,14 +1930,10 @@ class InteractiveShell(SingletonConfigurable):
                 except:
                     warn('Problems reading readline initialization file <%s>'
                          % inputrc_name)
-
-            # Configure readline according to user's prefs
-            # This is only done if GNU readline is being used.  If libedit
-            # is being used (as on Leopard) the readline config is
-            # not run as the syntax for libedit is different.
-            if not readline.uses_libedit:
+            
+            # load IPython config after inputrc if user has customized
+            if self._custom_readline_config:
                 for rlcommand in self.readline_parse_and_bind:
-                    #print "loading rl:",rlcommand  # dbg
                     readline.parse_and_bind(rlcommand)
 
             # Remove some chars from the delimiters list.  If we encounter
@@ -2314,6 +2349,11 @@ class InteractiveShell(SingletonConfigurable):
             ec = subprocess.call(cmd, shell=True, executable=os.environ.get('SHELL', None))
             # exit code is positive for program failure, or negative for
             # terminating signal number.
+            
+            # Interpret ec > 128 as signal
+            # Some shells (csh, fish) don't follow sh/bash conventions for exit codes
+            if ec > 128:
+                ec = -(ec - 128)
         
         # We explicitly do NOT return the subprocess status code, because
         # a non-None value would trigger :func:`sys.displayhook` calls.
@@ -2878,10 +2918,9 @@ class InteractiveShell(SingletonConfigurable):
         False : successful execution.
         True : an error occurred.
         """
-
         # Set our own excepthook in case the user code tries to call it
         # directly, so that the IPython crash handler doesn't get triggered
-        old_excepthook,sys.excepthook = sys.excepthook, self.excepthook
+        old_excepthook, sys.excepthook = sys.excepthook, self.excepthook
 
         # we save the original sys.excepthook in the instance, in case config
         # code (such as magics) needs access to it.
@@ -2899,8 +2938,8 @@ class InteractiveShell(SingletonConfigurable):
             self.showtraceback(exception_only=True)
             warn("To exit: use 'exit', 'quit', or Ctrl-D.", level=1)
         except self.custom_exceptions:
-            etype,value,tb = sys.exc_info()
-            self.CustomTB(etype,value,tb)
+            etype, value, tb = sys.exc_info()
+            self.CustomTB(etype, value, tb)
         except:
             self.showtraceback()
         else:
@@ -3047,6 +3086,7 @@ class InteractiveShell(SingletonConfigurable):
         self.tempdirs.append(dirname)
 
         handle, filename = tempfile.mkstemp('.py', prefix, dir=dirname)
+        os.close(handle)  # On Windows, there can only be one open handle on a file
         self.tempfiles.append(filename)
 
         if data:

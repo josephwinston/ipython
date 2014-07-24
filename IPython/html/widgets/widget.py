@@ -195,8 +195,15 @@ class Widget(LoggingConfigurable):
             A single property's name to get.
         """
         keys = self.keys if key is None else [key]
-        return {k: self._pack_widgets(getattr(self, k)) for k in keys} 
-
+        state = {}
+        for k in keys:
+            f = self.trait_metadata(k, 'to_json')
+            if f is None:
+                f = self._trait_to_json
+            value = getattr(self, k)
+            state[k] = f(value)
+        return state
+    
     def send(self, content):
         """Sends a custom msg to the widget model in the front-end.
 
@@ -280,7 +287,10 @@ class Widget(LoggingConfigurable):
         """Called when a state is received from the front-end."""
         for name in self.keys:
             if name in sync_data:
-                value = self._unpack_widgets(sync_data[name])
+                f = self.trait_metadata(name, 'from_json')
+                if f is None:
+                    f = self._trait_from_json
+                value = f(sync_data[name])
                 with self._lock_property(name, value):
                     setattr(self, name, value)
 
@@ -299,31 +309,34 @@ class Widget(LoggingConfigurable):
         """Called when a view has been displayed for this widget instance"""
         self._display_callbacks(self, **kwargs)
 
-    def _pack_widgets(self, x):
-        """Recursively converts all widget instances to model id strings.
+    def _trait_to_json(self, x):
+        """Convert a trait value to json
 
-        Children widgets will be stored and transmitted to the front-end by 
-        their model ids.  Return value must be JSON-able."""
+        Traverse lists/tuples and dicts and serialize their values as well.
+        Replace any widgets with their model_id
+        """
         if isinstance(x, dict):
-            return {k: self._pack_widgets(v) for k, v in x.items()}
+            return {k: self._trait_to_json(v) for k, v in x.items()}
         elif isinstance(x, (list, tuple)):
-            return [self._pack_widgets(v) for v in x]
+            return [self._trait_to_json(v) for v in x]
         elif isinstance(x, Widget):
-            return x.model_id
+            return "IPY_MODEL_" + x.model_id
         else:
             return x # Value must be JSON-able
 
-    def _unpack_widgets(self, x):
-        """Recursively converts all model id strings to widget instances.
+    def _trait_from_json(self, x):
+        """Convert json values to objects
 
-        Children widgets will be stored and transmitted to the front-end by 
-        their model ids."""
+        Replace any strings representing valid model id values to Widget references.
+        """
         if isinstance(x, dict):
-            return {k: self._unpack_widgets(v) for k, v in x.items()}
+            return {k: self._trait_from_json(v) for k, v in x.items()}
         elif isinstance(x, (list, tuple)):
-            return [self._unpack_widgets(v) for v in x]
-        elif isinstance(x, string_types):
-            return x if x not in Widget.widgets else Widget.widgets[x]
+            return [self._trait_from_json(v) for v in x]
+        elif isinstance(x, string_types) and x.startswith('IPY_MODEL_') and x[10:] in Widget.widgets:
+            # we want to support having child widgets at any level in a hierarchy
+            # trusting that a widget UUID will not appear out in the wild
+            return Widget.widgets[x]
         else:
             return x
 
@@ -341,7 +354,7 @@ class Widget(LoggingConfigurable):
 
 class DOMWidget(Widget):
     visible = Bool(True, help="Whether the widget is visible.", sync=True)
-    _css = Dict(sync=True) # Internal CSS property dict
+    _css = List(sync=True) # Internal CSS property list: (selector, key, value)
 
     def get_css(self, key, selector=""):
         """Get a CSS property of the widget.
@@ -384,18 +397,17 @@ class DOMWidget(Widget):
             of the view that should be styled with common CSS (see 
             `$el_to_style` in the Javascript code).
         """
-        if not selector in self._css:
-            self._css[selector] = {}
-        my_css = self._css[selector]
-        
         if value is None:
             css_dict = dict_or_key
         else:
             css_dict = {dict_or_key: value}
         
         for (key, value) in css_dict.items():
-            if not (key in my_css and value == my_css[key]):
-                my_css[key] = value
+            # First remove the selector/key pair from the css list if it exists.
+            # Then add the selector/key pair and new value to the bottom of the 
+            # list.
+            self._css = [x for x in self._css if not (x[0]==selector and x[1]==key)]
+            self._css += [(selector, key, value)]
         self.send_state('_css')
 
     def add_class(self, class_names, selector=""):

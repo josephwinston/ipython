@@ -845,24 +845,23 @@ class Hub(SessionFactory):
 
         parent = msg['parent_header']
         if not parent:
-            self.log.warn("iopub::IOPub message lacks parent: %r", msg)
+            self.log.debug("iopub::IOPub message lacks parent: %r", msg)
             return
         msg_id = parent['msg_id']
         msg_type = msg['header']['msg_type']
         content = msg['content']
-
+        
         # ensure msg_id is in db
         try:
             rec = self.db.get_record(msg_id)
         except KeyError:
-            rec = empty_record()
-            rec['msg_id'] = msg_id
-            self.db.add_record(msg_id, rec)
+            rec = None
+        
         # stream
         d = {}
         if msg_type == 'stream':
             name = content['name']
-            s = rec[name] or ''
+            s = '' if rec is None else rec[name]
             d[name] = s + content['data']
 
         elif msg_type == 'error':
@@ -880,9 +879,19 @@ class Hub(SessionFactory):
 
         if not d:
             return
-
+        
+        if rec is None:
+            # new record
+            rec = empty_record()
+            rec['msg_id'] = msg_id
+            rec.update(d)
+            d = rec
+            update_record = self.db.add_record
+        else:
+            update_record = self.db.update_record
+        
         try:
-            self.db.update_record(msg_id, d)
+            update_record(msg_id, d)
         except Exception:
             self.log.error("DB Error saving iopub message %r", msg_id, exc_info=True)
 

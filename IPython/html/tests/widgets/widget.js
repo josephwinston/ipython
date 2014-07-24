@@ -1,9 +1,15 @@
 var xor = function (a, b) {return !a ^ !b;}; 
-var isArray = function (a) {return toString.call(a) === "[object Array]" || toString.call(a) === "[object RuntimeArray]";};
+var isArray = function (a) {
+    try {
+        return Object.toString.call(a) === "[object Array]" || Object.toString.call(a) === "[object RuntimeArray]";
+    } catch (e) {
+        return Array.isArray(a);
+    }
+};
 var recursive_compare = function(a, b) {
     // Recursively compare two objects.
     var same = true;
-    same = same && !xor(a instanceof Object, b instanceof Object);
+    same = same && !xor(a instanceof Object || typeof a == 'object', b instanceof Object || typeof b == 'object');
     same = same && !xor(isArray(a), isArray(b));
 
     if (same) {
@@ -145,7 +151,7 @@ casper.notebook_test(function () {
         'display(textbox)\n' +
         'textbox.add_class("my-throttle-textbox")\n' +
         'def handle_change(name, old, new):\n' +
-        '    print(len(new))\n' +
+        '    display(len(new))\n' +
         '    time.sleep(0.5)\n' +
         'textbox.on_trait_change(handle_change, "value")\n' +
         'print(textbox.model_id)');
@@ -176,7 +182,7 @@ casper.notebook_test(function () {
         this.test.assert(outputs.length <= 5, 'Messages throttled.');
 
         // We also need to verify that the last state sent was correct.
-        var last_state = outputs[outputs.length-1].text;
-        this.test.assertEquals(last_state, "20\n", "Last state sent when throttling.");
+        var last_state = outputs[outputs.length-1]['text/plain'];
+        this.test.assertEquals(last_state, "20", "Last state sent when throttling.");
     });
 });

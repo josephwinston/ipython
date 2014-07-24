@@ -38,7 +38,7 @@ div.out_prompt_overlay:hover {
 }
 
 div.output_prompt {
-    color: darkred;
+    color: @output_prompt_color;
 }
 
 /* This class is the outer container of all output sections. */
@@ -84,7 +84,7 @@ div.output_area pre {
     padding: 0;
     border: 0;
     vertical-align: baseline;
-    color: black;
+    color: @output_pre_color;
     background-color: transparent;
     .border-radius(0);
 }
@@ -102,7 +102,7 @@ div.output_subarea {
 /* all text output has this class: */
 div.output_text {
     text-align: left;
-    color: @textColor;
+    color: @text-color;
     /* This has to match that of the the CodeMirror class line-height below */  
     line-height: @code_line_height;
 }
@@ -143,7 +143,7 @@ div.output_javascript:empty {
 /* raw_input styles */
 
 div.raw_input_container {
-    font-family: @monoFontFamily;
+    font-family: @font-family-monospace;
     // for some reason, em padding doesn't compute the same for raw_input
     // that is not the first input, but px does
     padding-top: 5px;

@@ -1364,13 +1364,12 @@ class ConsoleWidget(MetaQObjectHasTraits('NewBase', (LoggingConfigurable, QtGui.
 
             elif key == QtCore.Qt.Key_Right:
                 original_block_number = cursor.blockNumber()
-                cursor.movePosition(QtGui.QTextCursor.Right,
+                self._control.moveCursor(QtGui.QTextCursor.Right,
                                 mode=anchormode)
                 if cursor.blockNumber() != original_block_number:
-                    cursor.movePosition(QtGui.QTextCursor.Right,
+                    self._control.moveCursor(QtGui.QTextCursor.Right,
                                         n=len(self._continuation_prompt),
                                         mode=anchormode)
-                self._set_cursor(cursor)
                 intercepted = True
 
             elif key == QtCore.Qt.Key_Home:
@@ -1472,6 +1471,8 @@ class ConsoleWidget(MetaQObjectHasTraits('NewBase', (LoggingConfigurable, QtGui.
                 self._control.setFocus()
             else:
                 self.layout().setCurrentWidget(self._control)
+                # re-enable buffer truncation after paging
+                self._control.document().setMaximumBlockCount(self.buffer_size)
             return True
 
         elif key in (QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return,
@@ -1903,6 +1904,8 @@ class ConsoleWidget(MetaQObjectHasTraits('NewBase', (LoggingConfigurable, QtGui.
             if self.paging == 'custom':
                 self.custom_page_requested.emit(text)
             else:
+                # disable buffer truncation during paging
+                self._control.document().setMaximumBlockCount(0)
                 self._page_control.clear()
                 cursor = self._page_control.textCursor()
                 if html:

@@ -1,33 +1,25 @@
-//----------------------------------------------------------------------------
-//  Copyright (C) 2013 The IPython Development Team
-//
-//  Distributed under the terms of the BSD License.  The full license is in
-//  the file COPYING, distributed as part of this software.
-//----------------------------------------------------------------------------
+// Copyright (c) IPython Development Team.
+// Distributed under the terms of the Modified BSD License.
 
-//============================================================================
-// SelectionContainerWidget
-//============================================================================
+define([
+    "widgets/js/widget",
+    "base/js/utils",
+    "jquery",
+    "bootstrap",
+], function(widget, utils, $){
 
-/**
- * @module IPython
- * @namespace IPython
- **/
-
-define(["widgets/js/widget"], function(WidgetManager){
-
-    var AccordionView = IPython.DOMWidgetView.extend({
+    var AccordionView = widget.DOMWidgetView.extend({
         render: function(){
             // Called when view is rendered.
-            var guid = 'accordion' + IPython.utils.uuid();
+            var guid = 'panel-group' + utils.uuid();
             this.$el
                 .attr('id', guid)
-                .addClass('accordion');
+                .addClass('panel-group');
             this.containers = [];
             this.model_containers = {};
-            this.update_children([], this.model.get('_children'));
-            this.model.on('change:_children', function(model, value, options) {
-                this.update_children(model.previous('_children'), value);
+            this.update_children([], this.model.get('children'));
+            this.model.on('change:children', function(model, value, options) {
+                this.update_children(model.previous('children'), value);
             }, this);
             this.model.on('change:selected_index', function(model, value, options) {
                 this.update_selected_index(model.previous('selected_index'), value, options);
@@ -35,8 +27,17 @@ define(["widgets/js/widget"], function(WidgetManager){
             this.model.on('change:_titles', function(model, value, options) {
                 this.update_titles(value);
             }, this);
-            this.model.on('displayed', function() {
+            var that = this;
+            this.on('displayed', function() {
                 this.update_titles();
+                // Trigger model displayed events for any models that are child to 
+                // this model when this model is displayed.
+                that.is_displayed = true;
+                for (var property in that.child_views) {
+                    if (that.child_views.hasOwnProperty(property)) {
+                        that.child_views[property].trigger('displayed');
+                    }
+                }
             }, this);
         },
 
@@ -51,7 +52,7 @@ define(["widgets/js/widget"], function(WidgetManager){
                 var accordian = that.containers[page_index];
                 if (accordian !== undefined) {
                     accordian
-                        .find('.accordion-heading')
+                        .find('.panel-heading')
                         .find('.accordion-toggle')
                         .text(title);
                 }
@@ -62,9 +63,9 @@ define(["widgets/js/widget"], function(WidgetManager){
             // Only update the selection if the selection wasn't triggered
             // by the front-end.  It must be triggered by the back-end.
             if (options === undefined || options.updated_view != this) {
-                this.containers[old_index].find('.accordion-body').collapse('hide');
+                this.containers[old_index].find('.panel-collapse').collapse('hide');
                 if (0 <= new_index && new_index < this.containers.length) {
-                    this.containers[new_index].find('.accordion-body').collapse('show');
+                    this.containers[new_index].find('.panel-collapse').collapse('show');
                 }
             }
         },
@@ -83,19 +84,19 @@ define(["widgets/js/widget"], function(WidgetManager){
             this.containers.splice(accordion_group.container_index, 1);
             delete this.model_containers[model.id];
             accordion_group.remove();
-            this.delete_child_view(model);
+            this.pop_child_view(model);
         },
 
         add_child_model: function(model) {
             // Called when a child is added to children list.
             var view = this.create_child_view(model);
             var index = this.containers.length;
-            var uuid = IPython.utils.uuid();
+            var uuid = utils.uuid();
             var accordion_group = $('<div />')
-                .addClass('accordion-group')
+                .addClass('panel panel-default')
                 .appendTo(this.$el);
             var accordion_heading = $('<div />')
-                .addClass('accordion-heading')
+                .addClass('panel-heading')
                 .appendTo(accordion_group);
             var that = this;
             var accordion_toggle = $('<a />')
@@ -113,10 +114,10 @@ define(["widgets/js/widget"], function(WidgetManager){
                 .text('Page ' + index)
                 .appendTo(accordion_heading);
             var accordion_body = $('<div />', {id: uuid})
-                .addClass('accordion-body collapse')
+                .addClass('panel-collapse collapse')
                 .appendTo(accordion_group);
             var accordion_inner = $('<div />')
-                .addClass('accordion-inner')
+                .addClass('panel-body')
                 .appendTo(accordion_body);
             var container_index = this.containers.push(accordion_group) - 1;
             accordion_group.container_index = container_index;
@@ -125,12 +126,16 @@ define(["widgets/js/widget"], function(WidgetManager){
 
             this.update();
             this.update_titles();
+
+            // Trigger the displayed event if this model is displayed.
+            if (this.is_displayed) {
+                view.trigger('displayed');
+            }
         },
     });
-    WidgetManager.register_widget_view('AccordionView', AccordionView);
     
 
-    var TabView = IPython.DOMWidgetView.extend({    
+    var TabView = widget.DOMWidgetView.extend({    
         initialize: function() {
             // Public constructor.
             this.containers = [];
@@ -139,7 +144,7 @@ define(["widgets/js/widget"], function(WidgetManager){
 
         render: function(){
             // Called when view is rendered.
-            var uuid = 'tabs'+IPython.utils.uuid();
+            var uuid = 'tabs'+utils.uuid();
             var that = this;
             this.$tabs = $('<div />', {id: uuid})
                 .addClass('nav')
@@ -149,10 +154,21 @@ define(["widgets/js/widget"], function(WidgetManager){
                 .addClass('tab-content')
                 .appendTo(this.$el);
             this.containers = [];
-            this.update_children([], this.model.get('_children'));
-            this.model.on('change:_children', function(model, value, options) {
-                this.update_children(model.previous('_children'), value);
+            this.update_children([], this.model.get('children'));
+            this.model.on('change:children', function(model, value, options) {
+                this.update_children(model.previous('children'), value);
             }, this);
+
+            // Trigger model displayed events for any models that are child to 
+            // this model when this model is displayed.
+            this.on('displayed', function(){
+                that.is_displayed = true;
+                for (var property in that.child_views) {
+                    if (that.child_views.hasOwnProperty(property)) {
+                        that.child_views[property].trigger('displayed');
+                    }
+                }
+            });
         },
 
         update_children: function(old_list, new_list) {
@@ -165,19 +181,18 @@ define(["widgets/js/widget"], function(WidgetManager){
 
         remove_child_model: function(model) {
             // Called when a child is removed from children list.
-            var view = this.child_views[model.id];
+            var view = this.pop_child_view(model);
             this.containers.splice(view.parent_tab.tab_text_index, 1);
             view.parent_tab.remove();
             view.parent_container.remove();
             view.remove();
-            this.delete_child_view(model);
         },
 
         add_child_model: function(model) {
             // Called when a child is added to children list.
             var view = this.create_child_view(model);
             var index = this.containers.length;
-            var uuid = IPython.utils.uuid();
+            var uuid = utils.uuid();
 
             var that = this;
             var tab = $('<li />')
@@ -206,6 +221,11 @@ define(["widgets/js/widget"], function(WidgetManager){
                 .append(view.$el)
                 .appendTo(this.$tab_contents);
             view.parent_container = contents_div;
+
+            // Trigger the displayed event if this model is displayed.
+            if (this.is_displayed) {
+                view.trigger('displayed');
+            }
         },
 
         update: function(options) {
@@ -239,5 +259,9 @@ define(["widgets/js/widget"], function(WidgetManager){
             this.containers[index].tab('show');
         },
     });
-    WidgetManager.register_widget_view('TabView', TabView);
+
+    return {
+        'AccordionView': AccordionView,
+        'TabView': TabView,
+    };
 });

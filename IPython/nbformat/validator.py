@@ -2,8 +2,29 @@ from __future__ import print_function
 import json
 import os
 
-from IPython.external.jsonschema import Draft3Validator, SchemaError
-import IPython.external.jsonpointer as jsonpointer
+try:
+    from jsonschema import SchemaError
+    from jsonschema import Draft3Validator as Validator
+except ImportError as e:
+    verbose_msg = """
+
+    IPython depends on the jsonschema package: https://pypi.python.org/pypi/jsonschema
+    
+    Please install it first.
+    """
+    raise ImportError(str(e) + verbose_msg)
+
+try:
+    import jsonpointer as jsonpointer
+except ImportError as e:
+    verbose_msg = """
+
+    IPython depends on the jsonpointer package: https://pypi.python.org/pypi/jsonpointer
+    
+    Please install it first.
+    """
+    raise ImportError(str(e) + verbose_msg)
+
 from IPython.utils.py3compat import iteritems
 
 
@@ -37,11 +58,11 @@ def validate(nbjson):
         schema_json = json.load(fh)
 
     # resolve internal references
-    v3schema = resolve_ref(schema_json)
-    v3schema = jsonpointer.resolve_pointer(v3schema, '/notebook')
+    schema = resolve_ref(schema_json)
+    schema = jsonpointer.resolve_pointer(schema, '/notebook')
 
     # count how many errors there are
-    v = Draft3Validator(v3schema)
+    v = Validator(schema)
     errors = list(v.iter_errors(nbjson))
     return errors
 

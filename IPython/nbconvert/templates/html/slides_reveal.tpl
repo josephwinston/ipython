@@ -10,7 +10,13 @@
     <section>
     {{ super() }}
 {%- elif cell.metadata.slide_type in ['-'] -%}
-    {{ super() }}
+    {%- if cell.metadata.frag_helper in ['fragment_end'] -%}
+        <div class="fragment" data-fragment-index="{{ cell.metadata.frag_number }}">
+        {{ super() }}
+        </div>
+    {%- else -%}
+        {{ super() }}
+    {%- endif -%}
 {%- elif cell.metadata.slide_type in ['skip'] -%}
     <div style=display:none>
     {{ super() }}
@@ -20,7 +26,7 @@
     {{ super() }}
     </aside>
 {%- elif cell.metadata.slide_type in ['fragment'] -%}
-    <div class="fragment">
+    <div class="fragment" data-fragment-index="{{ cell.metadata.frag_number }}">
     {{ super() }}
     </div>
 {%- endif -%}
@@ -174,7 +180,6 @@ transition: Reveal.getQueryHash().transition || 'linear', // default/cube/page/c
 // Optional libraries used to extend on reveal.js
 dependencies: [
 { src: "{{resources.reveal.url_prefix}}/lib/js/classList.js", condition: function() { return !document.body.classList; } },
-{ src: "{{resources.reveal.url_prefix}}/plugin/highlight/highlight.js", async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
 { src: "{{resources.reveal.url_prefix}}/plugin/notes/notes.js", async: true, condition: function() { return !!document.body.classList; } }
 ]
 });

@@ -146,7 +146,7 @@ def find_package_data():
     # (there are lots of resources we bundle for sdist-reasons that we don't actually use)
     static_data.extend([
         pjoin(components, "backbone", "backbone-min.js"),
-        pjoin(components, "bootstrap", "bootstrap", "js", "bootstrap.min.js"),
+        pjoin(components, "bootstrap", "js", "bootstrap.min.js"),
         pjoin(components, "bootstrap-tour", "build", "css", "bootstrap-tour.min.css"),
         pjoin(components, "bootstrap-tour", "build", "js", "bootstrap-tour.min.js"),
         pjoin(components, "font-awesome", "font", "*.*"),
@@ -185,7 +185,11 @@ def find_package_data():
         'IPython.html.tests' : js_tests,
         'IPython.qt.console' : ['resources/icon/*.svg'],
         'IPython.nbconvert' : nbconvert_templates +
-            ['tests/files/*.*', 'exporters/tests/files/*.*'],
+            [
+                'tests/files/*.*',
+                'exporters/tests/files/*.*',
+                'preprocessors/tests/files/*.*',
+            ],
         'IPython.nbconvert.filters' : ['marked.js'],
         'IPython.nbformat' : ['tests/*.ipynb','v3/v3.withref.json']
     }

@@ -37,8 +37,8 @@
 .CodeMirror-gutters {
     // This is needed because our cell has rounded corners, otherwise the gutter area square
     // corner cuts into the rounded cell border.
-    border-bottom-left-radius: @baseBorderRadius;
-    border-top-left-radius: @baseBorderRadius;
+    border-bottom-left-radius: @border-radius-base;
+    border-top-left-radius: @border-radius-base;
 }
 
 .CodeMirror pre {
@@ -47,4 +47,11 @@
     padding: 0;
     border: 0;
     .border-radius(0)
+}
+
+// FIXME: This is a horrible workaround for CodeMirror bug #2562.
+// Let's try not to release 3.0 with this.
+
+.CodeMirror-vscrollbar, .CodeMirror-hscrollbar {
+    display: none !important;
 }
