@@ -144,7 +144,7 @@ class MainWindow(QtGui.QMainWindow):
         # of this is when 'exit' is sent in a slave tab. 'exit' will be
         # re-sent by this function on the master widget, which ask all slave
         # widgets to exit
-        if closing_widget==None:
+        if closing_widget is None:
             return
 
         #get a list of all slave widgets on the same kernel.
@@ -205,7 +205,7 @@ class MainWindow(QtGui.QMainWindow):
                         for slave in slave_tabs:
                             background(slave.kernel_client.stop_channels)
                             self.tab_widget.removeTab(self.tab_widget.indexOf(slave))
-                        closing_widget.execute("exit")
+                        kernel_manager.shutdown_kernel()
                         self.tab_widget.removeTab(current_tab)
                         background(kernel_client.stop_channels)
                     elif reply == 0: # close Console
@@ -719,12 +719,12 @@ class MainWindow(QtGui.QMainWindow):
         QtCore.QTimer.singleShot(200, self.active_frontend._control.setFocus)
 
     def magic_helper_paste_requested(self, text = None):
-        if text != None:
+        if text is not None:
             self.active_frontend.input_buffer = text            
             self._set_active_frontend_focus()
 
     def magic_helper_run_requested(self, text = None):
-        if text != None:            
+        if text is not None:
             self.active_frontend.execute(text)  
             self._set_active_frontend_focus()
 
@@ -892,6 +892,7 @@ class MainWindow(QtGui.QMainWindow):
         title = self.window().windowTitle()
         cancel = QtGui.QMessageBox.Cancel
         okay = QtGui.QMessageBox.Ok
+        accept_role = QtGui.QMessageBox.AcceptRole
         
         if self.confirm_exit:
             if self.tab_widget.count() > 1:
@@ -917,7 +918,7 @@ class MainWindow(QtGui.QMainWindow):
         if reply == cancel:
             event.ignore()
             return
-        if reply == okay:
+        if reply == okay or reply == accept_role:
             while self.tab_widget.count() >= 1:
                 # prevent further confirmations:
                 widget = self.active_frontend

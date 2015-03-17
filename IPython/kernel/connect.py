@@ -159,7 +159,7 @@ def get_connection_file(app=None):
     return filefind(app.connection_file, ['.', app.profile_dir.security_dir])
 
 
-def find_connection_file(filename, profile=None):
+def find_connection_file(filename='kernel-*.json', profile=None):
     """find a connection file, and return its absolute path.
     
     The current working directory and the profile's security
@@ -562,7 +562,7 @@ class ConnectionFileMixin(LoggingConfigurable):
         return self._create_connected_socket('hb', identity=identity)
 
     def connect_control(self, identity=None):
-        """return zmq Socket connected to the Heartbeat channel"""
+        """return zmq Socket connected to the Control channel"""
         return self._create_connected_socket('control', identity=identity)
 
 

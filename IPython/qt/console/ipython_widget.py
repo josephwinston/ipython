@@ -151,8 +151,23 @@ class IPythonWidget(FrontendWidget):
             start = content['cursor_start']
             end = content['cursor_end']
             
+            start = max(start, 0)
+            end = max(end, start)
+
+            # Move the control's cursor to the desired end point
+            cursor_pos = self._get_input_buffer_cursor_pos()
+            if end < cursor_pos:
+                cursor.movePosition(QtGui.QTextCursor.Left,
+                                    n=(cursor_pos - end))
+            elif end > cursor_pos:
+                cursor.movePosition(QtGui.QTextCursor.Right,
+                                    n=(end - cursor_pos))
+            # This line actually applies the move to control's cursor
+            self._control.setTextCursor(cursor)
+
             offset = end - start
-            # Move the cursor to the start of the match and complete.
+            # Move the local cursor object to the start of the match and
+            # complete.
             cursor.movePosition(QtGui.QTextCursor.Left, n=offset)
             self._complete_with_items(cursor, matches)
 
@@ -188,7 +203,7 @@ class IPythonWidget(FrontendWidget):
                 self._retrying_history_request = True
                 # wait out the kernel's queue flush, which is currently timed at 0.1s
                 time.sleep(0.25)
-                self.kernel_client.shell_channel.history(hist_access_type='tail',n=1000)
+                self.kernel_client.history(hist_access_type='tail',n=1000)
             else:
                 self._retrying_history_request = False
             return
@@ -204,12 +219,28 @@ class IPythonWidget(FrontendWidget):
                 items.append(cell)
                 last_cell = cell
         self._set_history(items)
+    
+    def _insert_other_input(self, cursor, content):
+        """Insert function for input from other frontends"""
+        cursor.beginEditBlock()
+        start = cursor.position()
+        n = content.get('execution_count', 0)
+        cursor.insertText('\n')
+        self._insert_html(cursor, self._make_in_prompt(n))
+        cursor.insertText(content['code'])
+        self._highlighter.rehighlightBlock(cursor.block())
+        cursor.endEditBlock()
+        
+    def _handle_execute_input(self, msg):
+        """Handle an execute_input message"""
+        self.log.debug("execute_input: %s", msg.get('content', ''))
+        if self.include_output(msg):
+            self._append_custom(self._insert_other_input, msg['content'], before_prompt=True)
 
+    
     def _handle_execute_result(self, msg):
-        """ Reimplemented for IPython-style "display hook".
-        """
-        self.log.debug("execute_result: %s", msg.get('content', ''))
-        if not self._hidden and self._is_from_this_session(msg):
+        """Reimplemented for IPython-style "display hook"."""
+        if self.include_output(msg):
             self.flush_clearoutput()
             content = msg['content']
             prompt_number = content.get('execution_count', 0)
@@ -225,13 +256,11 @@ class IPythonWidget(FrontendWidget):
                 self._append_plain_text(text + self.output_sep2, True)
 
     def _handle_display_data(self, msg):
-        """ The base handler for the ``display_data`` message.
-        """
-        self.log.debug("display: %s", msg.get('content', ''))
+        """The base handler for the ``display_data`` message."""
         # For now, we don't display data from other frontends, but we
         # eventually will as this allows all frontends to monitor the display
         # data. But we need to figure out how to handle this in the GUI.
-        if not self._hidden and self._is_from_this_session(msg):
+        if self.include_output(msg):
             self.flush_clearoutput()
             data = msg['content']['data']
             metadata = msg['content']['metadata']
@@ -247,7 +276,7 @@ class IPythonWidget(FrontendWidget):
         """Handle kernel info replies."""
         content = rep['content']
         if not self._guiref_loaded:
-            if content.get('language') == 'python':
+            if content.get('implementation') == 'ipython':
                 self._load_guiref_magic()
             self._guiref_loaded = True
         
@@ -263,12 +292,11 @@ class IPythonWidget(FrontendWidget):
         # The reply will trigger %guiref load provided language=='python'
         self.kernel_client.kernel_info()
 
-        self.kernel_client.shell_channel.history(hist_access_type='tail',
-                                                  n=1000)
+        self.kernel_client.history(hist_access_type='tail', n=1000)
     
     def _load_guiref_magic(self):
         """Load %guiref magic."""
-        self.kernel_client.shell_channel.execute('\n'.join([
+        self.kernel_client.execute('\n'.join([
             "try:",
             "    _usage",
             "except:",
@@ -352,7 +380,7 @@ class IPythonWidget(FrontendWidget):
         """
         # If a number was not specified, make a prompt number request.
         if number is None:
-            msg_id = self.kernel_client.shell_channel.execute('', silent=True)
+            msg_id = self.kernel_client.execute('', silent=True)
             info = self._ExecutionRequest(msg_id, 'prompt')
             self._request_info['execute'][msg_id] = info
             return
@@ -483,7 +511,8 @@ class IPythonWidget(FrontendWidget):
             body = self.in_prompt % number
         except TypeError:
             # allow in_prompt to leave out number, e.g. '>>> '
-            body = self.in_prompt
+            from xml.sax.saxutils import escape
+            body = escape(self.in_prompt)
         return '<span class="in-prompt">%s</span>' % body
 
     def _make_continuation_prompt(self, prompt):
@@ -498,7 +527,12 @@ class IPythonWidget(FrontendWidget):
     def _make_out_prompt(self, number):
         """ Given a prompt number, returns an HTML Out prompt.
         """
-        body = self.out_prompt % number
+        try:
+            body = self.out_prompt % number
+        except TypeError:
+            # allow out_prompt to leave out number, e.g. '<<< '
+            from xml.sax.saxutils import escape
+            body = escape(self.out_prompt)
         return '<span class="out-prompt">%s</span>' % body
 
     #------ Payload handlers --------------------------------------------------

@@ -18,6 +18,7 @@ import os
 import pprint
 import random
 import uuid
+import warnings
 from datetime import datetime
 
 try:
@@ -27,12 +28,20 @@ except:
     cPickle = None
     import pickle
 
+try:
+    # We are using compare_digest to limit the surface of timing attacks
+    from hmac import compare_digest
+except ImportError:
+    # Python < 2.7.7: When digests don't match no feedback is provided,
+    # limiting the surface of attack
+    def compare_digest(a,b): return a == b
+
 import zmq
 from zmq.utils import jsonapi
 from zmq.eventloop.ioloop import IOLoop
 from zmq.eventloop.zmqstream import ZMQStream
 
-from IPython.core.release import kernel_protocol_version, kernel_protocol_version_info
+from IPython.core.release import kernel_protocol_version
 from IPython.config.configurable import Configurable, LoggingConfigurable
 from IPython.utils import io
 from IPython.utils.importstring import import_item
@@ -113,7 +122,7 @@ def default_secure(cfg):
     If Session.key/keyfile have not been set, set Session.key to
     a new random UUID.
     """
-    
+    warnings.warn("default_secure is deprecated", DeprecationWarning)
     if 'Session' in cfg:
         if 'key' in cfg.Session or 'keyfile' in cfg.Session:
             return
@@ -216,7 +225,7 @@ class Session(Configurable):
     dict-based IPython message spec. The Session will handle
     serialization/deserialization, security, and metadata.
 
-    Sessions support configurable serialiization via packer/unpacker traits,
+    Sessions support configurable serialization via packer/unpacker traits,
     and signing with HMAC digests via the key/keyfile traits.
 
     Parameters
@@ -306,8 +315,11 @@ class Session(Configurable):
 
     # message signature related traits:
     
-    key = CBytes(b'', config=True,
-        help="""execution key, for extra authentication.""")
+    key = CBytes(config=True,
+        help="""execution key, for signing messages.""")
+    def _key_default(self):
+        return str_to_bytes(str(uuid.uuid4()))
+    
     def _key_changed(self):
         self._new_auth()
     
@@ -424,6 +436,7 @@ class Session(Configurable):
         # ensure self._session_default() if necessary, so bsession is defined:
         self.session
         self.pid = os.getpid()
+        self._new_auth()
 
     @property
     def msg_id(self):
@@ -484,7 +497,7 @@ class Session(Configurable):
         """Return the nested message dict.
 
         This format is different from what is sent over the wire. The
-        serialize/unserialize methods converts this nested message dict to the wire
+        serialize/deserialize methods converts this nested message dict to the wire
         format, which is a list of message parts.
         """
         msg = {}
@@ -517,14 +530,14 @@ class Session(Configurable):
     def serialize(self, msg, ident=None):
         """Serialize the message components to bytes.
 
-        This is roughly the inverse of unserialize. The serialize/unserialize
+        This is roughly the inverse of deserialize. The serialize/deserialize
         methods work with full message lists, whereas pack/unpack work with
         the individual message parts in the message list.
 
         Parameters
         ----------
         msg : dict or Message
-            The nexted message dict as returned by the self.msg method.
+            The next message dict as returned by the self.msg method.
 
         Returns
         -------
@@ -582,7 +595,7 @@ class Session(Configurable):
         [ident1,ident2,...,DELIM,HMAC,p_header,p_parent,p_content,
          buffer1,buffer2,...]
 
-        The serialize/unserialize methods convert the nested message dict into this
+        The serialize/deserialize methods convert the nested message dict into this
         format.
 
         Parameters
@@ -626,6 +639,7 @@ class Session(Configurable):
             # We got a Message or message dict, not a msg_type so don't
             # build a new Message.
             msg = msg_or_type
+            buffers = buffers or msg.get('buffers', [])
         else:
             msg = self.msg(msg_or_type, content=content, parent=parent,
                            header=header, metadata=metadata)
@@ -714,7 +728,7 @@ class Session(Configurable):
         # invalid large messages can cause very expensive string comparisons
         idents, msg_list = self.feed_identities(msg_list, copy)
         try:
-            return idents, self.unserialize(msg_list, content=content, copy=copy)
+            return idents, self.deserialize(msg_list, content=content, copy=copy)
         except Exception as e:
             # TODO: handle it
             raise e
@@ -739,7 +753,7 @@ class Session(Configurable):
             idents will always be a list of bytes, each of which is a ZMQ
             identity. msg_list will be a list of bytes or zmq.Messages of the
             form [HMAC,p_header,p_parent,p_content,buffer1,buffer2,...] and
-            should be unpackable/unserializable via self.unserialize at this
+            should be unpackable/unserializable via self.deserialize at this
             point.
         """
         if copy:
@@ -780,10 +794,10 @@ class Session(Configurable):
         to_cull = random.sample(self.digest_history, n_to_cull)
         self.digest_history.difference_update(to_cull)
     
-    def unserialize(self, msg_list, content=True, copy=True):
+    def deserialize(self, msg_list, content=True, copy=True):
         """Unserialize a msg_list to a nested message dict.
 
-        This is roughly the inverse of serialize. The serialize/unserialize
+        This is roughly the inverse of serialize. The serialize/deserialize
         methods work with full message lists, whereas pack/unpack work with
         the individual message parts in the message list.
 
@@ -818,7 +832,7 @@ class Session(Configurable):
                 raise ValueError("Duplicate Signature: %r" % signature)
             self._add_digest(signature)
             check = self.sign(msg_list[1:5])
-            if not signature == check:
+            if not compare_digest(signature, check):
                 raise ValueError("Invalid Signature: %r" % signature)
         if not len(msg_list) >= minlen:
             raise TypeError("malformed message, must have at least %i elements"%minlen)
@@ -834,10 +848,16 @@ class Session(Configurable):
             message['content'] = msg_list[4]
 
         message['buffers'] = msg_list[5:]
-        # print("received: %s: %s\n    %s" % (message['msg_type'], message['header'], message['content']))
         # adapt to the current version
         return adapt(message)
-        # print("adapted: %s: %s\n     %s" % (adapted['msg_type'], adapted['header'], adapted['content']))
+    
+    def unserialize(self, *args, **kwargs):
+        warnings.warn(
+            "Session.unserialize is deprecated. Use Session.deserialize.",
+            DeprecationWarning,
+        )
+        return self.deserialize(*args, **kwargs)
+
 
 def test_msg2obj():
     am = dict(x=1)

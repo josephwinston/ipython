@@ -5,12 +5,17 @@
 
 from __future__ import absolute_import
 
+from contextlib import contextmanager
 import os
 import re
 import signal
 import sys
 import time
 import warnings
+try:
+    from queue import Empty  # Py 3
+except ImportError:
+    from Queue import Empty  # Py 2
 
 import zmq
 
@@ -21,7 +26,6 @@ from IPython.utils.traitlets import (
     Any, Instance, Unicode, List, Bool, Type, DottedObjectName
 )
 from IPython.kernel import (
-    make_ipkernel_cmd,
     launch_kernel,
     kernelspec,
 )
@@ -58,7 +62,7 @@ class KernelManager(ConnectionFileMixin):
     def _kernel_spec_manager_default(self):
         return kernelspec.KernelSpecManager(ipython_dir=self.ipython_dir)
     
-    kernel_name = Unicode('python')
+    kernel_name = Unicode(kernelspec.NATIVE_KERNEL_NAME)
     
     kernel_spec = Instance(kernelspec.KernelSpec)
     
@@ -66,6 +70,10 @@ class KernelManager(ConnectionFileMixin):
         return self.kernel_spec_manager.get_kernel_spec(self.kernel_name)
     
     def _kernel_name_changed(self, name, old, new):
+        if new == 'python':
+            self.kernel_name = kernelspec.NATIVE_KERNEL_NAME
+            # This triggered another run of this function, so we can exit now
+            return
         self.kernel_spec = self.kernel_spec_manager.get_kernel_spec(new)
         self.ipython_kernel = new in {'python', 'python2', 'python3'}
 
@@ -155,18 +163,13 @@ class KernelManager(ConnectionFileMixin):
     # Kernel management
     #--------------------------------------------------------------------------
 
-    def format_kernel_cmd(self, **kw):
+    def format_kernel_cmd(self, extra_arguments=None):
         """replace templated args (e.g. {connection_file})"""
+        extra_arguments = extra_arguments or []
         if self.kernel_cmd:
-            cmd = self.kernel_cmd
-        elif self.kernel_name == 'python':
-            # The native kernel gets special handling
-            cmd = make_ipkernel_cmd(
-                'from IPython.kernel.zmq.kernelapp import main; main()',
-                **kw
-            )
+            cmd = self.kernel_cmd + extra_arguments
         else:
-            cmd = self.kernel_spec.argv
+            cmd = self.kernel_spec.argv + extra_arguments
 
         ns = dict(connection_file=self.connection_file)
         ns.update(self._launch_args)
@@ -223,7 +226,8 @@ class KernelManager(ConnectionFileMixin):
         # save kwargs for use in restart
         self._launch_args = kw.copy()
         # build the Popen cmd
-        kernel_cmd = self.format_kernel_cmd(**kw)
+        extra_arguments = kw.pop('extra_arguments', [])
+        kernel_cmd = self.format_kernel_cmd(extra_arguments=extra_arguments)
         if self.kernel_cmd:
             # If kernel_cmd has been set manually, don't refer to a kernel spec
             env = os.environ
@@ -233,7 +237,6 @@ class KernelManager(ConnectionFileMixin):
             env.update(self.kernel_spec.env or {})
         # launch the kernel subprocess
         self.kernel = self._launch_kernel(kernel_cmd, env=env,
-                                    ipython_kernel=self.ipython_kernel,
                                     **kw)
         self.start_restarter()
         self._connect_control_socket()
@@ -410,3 +413,30 @@ class KernelManager(ConnectionFileMixin):
 
 KernelManagerABC.register(KernelManager)
 
+
+def start_new_kernel(startup_timeout=60, kernel_name='python', **kwargs):
+    """Start a new kernel, and return its Manager and Client"""
+    km = KernelManager(kernel_name=kernel_name)
+    km.start_kernel(**kwargs)
+    kc = km.client()
+    kc.start_channels()
+    kc.wait_for_ready()
+
+    return km, kc
+
+@contextmanager
+def run_kernel(**kwargs):
+    """Context manager to create a kernel in a subprocess.
+    
+    The kernel is shut down when the context exits.
+    
+    Returns
+    -------
+    kernel_client: connected KernelClient instance
+    """
+    km, kc = start_new_kernel(**kwargs)
+    try:
+        yield kc
+    finally:
+        kc.stop_channels()
+        km.shutdown_kernel(now=True)

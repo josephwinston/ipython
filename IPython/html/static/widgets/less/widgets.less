@@ -1,3 +1,13 @@
+@widget-width: 350px;
+@widget-width-short: 150px;
+
+// Pad interact widgets by default.
+.widget-interact {
+    >div, >input {
+        padding: 2.5px;
+    }
+}
+
 .widget-area {
     /*
     LESS file that styles IPython notebook widgets and the area they sit in.
@@ -26,40 +36,19 @@
         .box-flex2();
         .align-start();
     }
+
+    &.connection-problems .prompt:after {
+        content: @fa-var-chain-broken;
+        font-family: 'FontAwesome';
+        color: @brand-danger;
+        font-size: @notebook_font_size;
+        top: 3px;
+        padding: 3px;
+    }
 }
 
 /* THE CLASSES BELOW CAN APPEAR ANYWHERE IN THE DOM (POSSIBLEY OUTSIDE OF
    THE WIDGET AREA). */
-
-.widget-hlabel {
-    /* Horizontal Label */
-    min-width      : 10ex;
-    padding-right  : 8px;
-    padding-top    : 5px;
-    text-align     : right;
-    vertical-align : text-top;
-}
-
-.widget-vlabel {
-    /* Vertical Label */
-    padding-bottom : 5px;
-    text-align     : center;
-    vertical-align : text-bottom;
-}
-
-.widget-hreadout {
-    padding-left   : 8px;
-    padding-top    : 5px;
-    text-align     : left;
-    vertical-align : text-top;
-}
-
-.widget-vreadout {
-    /* Vertical Label */
-    padding-top : 5px;
-    text-align     : center;
-    vertical-align : text-top;
-}
 
 .slide-track {
     /* Slider Track */
@@ -93,11 +82,11 @@
     /* Fix the padding of the slide track so the ui-slider is sized 
     correctly. */
     padding-left  : 8px;
-    padding-right : 5px;
+    padding-right : 2px;
     overflow      : visible;
 
     /* Default size of the slider */
-    width        : 350px; 
+    width        : @widget-width; 
     height       : 5px;
     max-height   : 5px;
     margin-top   : 13px;
@@ -111,16 +100,23 @@
 
     .ui-slider {
         /* Inner, invisible slide div */
-        border     : 0px !important;
-        background : none !important;
+        border     : 0px;
+        background : none;
         
         .hbox();
         .box-flex1();
 
         .ui-slider-handle {
-            width      : 14px !important;
-            height     : 28px !important;
-            margin-top : -8px !important;
+            width: 12px;
+            height: 28px;
+            margin-top: -8px;
+            border-radius: @border-radius-base;
+        }
+
+        .ui-slider-range {
+            height     : 12px;
+            margin-top : -4px;
+            background : @page-backdrop-color; 
         }
     }
 }
@@ -130,7 +126,7 @@
     
     /* Fix the padding of the slide track so the ui-slider is sized 
     correctly. */
-    padding-bottom : 8px;
+    padding-bottom : 5px;
     overflow       : visible; 
 
     /* Default size of the slider */
@@ -147,8 +143,8 @@
     
     .ui-slider {
         /* Inner, invisible slide div */
-        border      : 0px !important;
-        background  : none !important;
+        border      : 0px;
+        background  : none;
         margin-left : -4px;
         margin-top  : 5px;
         
@@ -156,35 +152,42 @@
         .box-flex1();
 
         .ui-slider-handle {
-            width       : 28px !important;
-            height      : 14px !important;
+            width       : 28px;
+            height      : 12px;
             margin-left : -9px;
+            border-radius: @border-radius-base;
+        }
+
+        .ui-slider-range {
+            width       : 12px;
+            margin-left : -1px;
+            background  : @page-backdrop-color; 
         }
     }
 }
 
 .widget-text {
     /* String Textbox - used for TextBoxView and TextAreaView */
-    width         : 350px;
-    margin : 0px !important;
+    width  : @widget-width;
+    margin : 0px;
 }
 
 .widget-listbox {
     /* Listbox */
-    width         : 350px;
+    width         : @widget-width;
     margin-bottom : 0px;
 }
 
 .widget-numeric-text {
     /* Single Line Textbox - used for IntTextView and FloatTextView */
-    width : 150px;
-    margin : 0px !important;
+    width : @widget-width-short;
+    margin : 0px;
 }
 
 .widget-progress {
     /* Progress Bar */
     margin-top: 6px;
-    width : 350px;
+    min-width : @widget-width;
 
     .progress-bar {
         /* Disable progress bar animation */
@@ -198,71 +201,63 @@
 
 .widget-combo-btn {
     /* ComboBox Main Button */
-    min-width : 125px;
+    /* Subtract 25px to account for the drop arrow button */
+    min-width : @widget-width-short - 25px; 
 }
 
-.widget-box {
-    /* The following section sets the style for the invisible div that
-    hold widgets and their accompanying labels.
-
-    Looks like this:
-    +-----------------------------+
-    | widget-box (or similar)     |
-    |  +-------+---------------+  |
-    |  | Label | Actual Widget |  |
-    |  +-------+---------------+  |
-    +-----------------------------+
-    */
-    margin : 5px;
-
-    .start();
-    .widget-container();
+.widget_item .dropdown-menu li a {
+    color: inherit;
 }
 
 .widget-hbox {
     /* Horizontal widgets */
-    .widget-box();
     .hbox();
-}
-
-.widget-hbox-single {
-    /* Single line horizontal widgets */
-    .widget-hbox();
-    height : 30px;
 
     input[type="checkbox"] {
         margin-top: 9px;
+        margin-bottom: 10px;
+    }
+
+    .widget-label {
+        /* Horizontal Label */
+        min-width      : 10ex;
+        padding-right  : 8px;
+        padding-top    : 5px;
+        text-align     : right;
+        vertical-align : text-top;
+    }
+
+    .widget-readout {
+        padding-left   : 8px;
+        padding-top    : 5px;
+        text-align     : left;
+        vertical-align : text-top;
     }
 }
 
 .widget-vbox {
     /* Vertical widgets */ 
-    .widget-box();
     .vbox();
+
+
+    .widget-label {
+        /* Vertical Label */
+        padding-bottom : 5px;
+        text-align     : center;
+        vertical-align : text-bottom;
+    }
+
+    .widget-readout {
+        /* Vertical Label */
+        padding-top : 5px;
+        text-align     : center;
+        vertical-align : text-top;
+    }
+
 }
 
-.widget-vbox-single {
-    /* For vertical slides */ 
-    .widget-vbox();
-    width : 30px;
-}
-
-.widget-modal {
-    /* ContainerWidget - ModalView */   
-    overflow    : hidden; 
-    position    : absolute !important;
-    top         : 0px; 
-    left        : 0px; 
-    margin-left : 0px !important;
-}
-
-.widget-modal-body {
-    /* ContainerWidget - ModalView Body */
-    max-height: none !important;
-}
-
-.widget-container {
-    /* ContainerWidget */
+.widget-box {
+    /* Box */
     .border-box-sizing();
     .align-start();
 }
@@ -276,14 +271,6 @@
 
     label {
         margin-top: 0px;
+        margin-left: 20px;
     }
-}
-
-.docked-widget-modal {
-    /* Horizontal Label */
-    overflow: hidden; 
-    position: relative !important;
-    top: 0px !important; 
-    left: 0px !important; 
-    margin-left: 0px !important;
 }

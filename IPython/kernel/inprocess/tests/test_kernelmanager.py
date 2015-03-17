@@ -24,7 +24,7 @@ class InProcessKernelManagerTestCase(unittest.TestCase):
         self.assert_(km.has_kernel)
         self.assert_(km.kernel is not None)
 
-        kc = BlockingInProcessKernelClient(kernel=km.kernel)
+        kc = km.client()
         self.assert_(not kc.channels_running)
 
         kc.start_channels()
@@ -32,7 +32,7 @@ class InProcessKernelManagerTestCase(unittest.TestCase):
 
         old_kernel = km.kernel
         km.restart_kernel()
-        self.assert_(km.kernel is not None)
+        self.assertIsNotNone(km.kernel)
         self.assertNotEquals(km.kernel, old_kernel)
 
         km.shutdown_kernel()
@@ -49,8 +49,9 @@ class InProcessKernelManagerTestCase(unittest.TestCase):
         """
         km = InProcessKernelManager()
         km.start_kernel()
-        kc = BlockingInProcessKernelClient(kernel=km.kernel)
+        kc = km.client()
         kc.start_channels()
+        kc.wait_for_ready()
         kc.execute('foo = 1')
         self.assertEquals(km.kernel.shell.user_ns['foo'], 1)
 
@@ -59,8 +60,9 @@ class InProcessKernelManagerTestCase(unittest.TestCase):
         """
         km = InProcessKernelManager()
         km.start_kernel()
-        kc = BlockingInProcessKernelClient(kernel=km.kernel)
+        kc = km.client()
         kc.start_channels()
+        kc.wait_for_ready()
         km.kernel.shell.push({'my_bar': 0, 'my_baz': 1})
         kc.complete('my_ba', 5)
         msg = kc.get_shell_msg()
@@ -73,8 +75,9 @@ class InProcessKernelManagerTestCase(unittest.TestCase):
         """
         km = InProcessKernelManager()
         km.start_kernel()
-        kc = BlockingInProcessKernelClient(kernel=km.kernel)
+        kc = km.client()
         kc.start_channels()
+        kc.wait_for_ready()
         km.kernel.shell.user_ns['foo'] = 1
         kc.inspect('foo')
         msg = kc.get_shell_msg()
@@ -89,8 +92,9 @@ class InProcessKernelManagerTestCase(unittest.TestCase):
         """
         km = InProcessKernelManager()
         km.start_kernel()
-        kc = BlockingInProcessKernelClient(kernel=km.kernel)
+        kc = km.client()
         kc.start_channels()
+        kc.wait_for_ready()
         kc.execute('%who')
         kc.history(hist_access_type='tail', n=1)
         msg = kc.shell_channel.get_msgs()[-1]

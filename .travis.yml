@@ -3,26 +3,36 @@ language: python
 python:
     - 3.4
     - 2.7
-    - 3.3
+sudo: false
 env:
-    - GROUP=js
+  global:
+    - PATH=$TRAVIS_BUILD_DIR/pandoc:$PATH
+  matrix:
     - GROUP=
+    - GROUP=js/base
+    - GROUP=js/notebook
+    - GROUP=js/services
+    - GROUP=js/tree
+    - GROUP=js/widgets
 before_install:
-    # workaround for https://github.com/travis-ci/travis-cookbooks/issues/155
-    - sudo rm -rf /dev/shm && sudo ln -s /run/shm /dev/shm
-    # Pierre Carrier's PPA for PhantomJS and CasperJS
-    - time sudo add-apt-repository -y ppa:pcarrier/ppa
-    - time sudo apt-get update
-    - time sudo apt-get install pandoc casperjs libzmq3-dev
-    # pin tornado < 4 for js tests while phantom is on super old webkit
-    - if [[ $GROUP == 'js' ]]; then pip install 'tornado<4'; fi
-    - time pip install -f https://nipy.bic.berkeley.edu/wheelhouse/travis jinja2 sphinx pygments tornado requests mock pyzmq jsonschema jsonpointer mistune
+    - 'if [[ $GROUP != js* ]]; then wget https://7de4dfdec62155b49b44-d726a73613a1989d29b147f20996e7c1.ssl.cf2.rackcdn.com/pandoc-1.12.3-linux-debian-x86_64.zip && unzip pandoc-1.12.3-linux-debian-x86_64.zip; fi'
+    - 'if [[ $GROUP == js* ]]; then wget https://7de4dfdec62155b49b44-d726a73613a1989d29b147f20996e7c1.ssl.cf2.rackcdn.com/mathjax.zip; fi'
+    - 'if [[ $GROUP == js* ]]; then npm install -g casperjs; fi'
+    - git clone --quiet --depth 1 https://github.com/minrk/travis-wheels travis-wheels
+    - 'if [[ $GROUP != js* ]]; then COVERAGE="--coverage xml"; fi'
 install:
-    - time python setup.py install -q 
+    - pip install -f travis-wheels/wheelhouse file://$PWD#egg=ipython[all] coveralls
+before_script:
+    - 'if [[ $GROUP == js* ]]; then python -m IPython.external.mathjax mathjax.zip; fi'
 script:
-    - cd /tmp && iptest $GROUP
+    - cd /tmp && iptest $GROUP $COVERAGE && cd -
 
 matrix:
-    exclude:
+    include:
         - python: 3.3
-          env: GROUP=js
+          env: GROUP=
+
+after_success:
+    - cp /tmp/ipy_coverage.xml ./
+    - cp /tmp/.coverage ./
+    - coveralls

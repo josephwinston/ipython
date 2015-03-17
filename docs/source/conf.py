@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.abspath('../sphinxext'))
 
 # We load the ipython release info into a dict by explicit execution
 iprelease = {}
-execfile('../../IPython/core/release.py',iprelease)
+exec(compile(open('../../IPython/core/release.py').read(), '../../IPython/core/release.py', 'exec'),iprelease)
 
 # General configuration
 # ---------------------
@@ -52,6 +52,7 @@ extensions = [
     'IPython.sphinxext.ipython_directive',
     'numpydoc',  # to preprocess docstrings
     'github',  # for easy GitHub links
+    'magics',
 ]
 
 if ON_RTD:
@@ -189,7 +190,8 @@ html_additional_pages = {
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'ipythondoc'
 
-intersphinx_mapping = {'python': ('http://docs.python.org/2/', None)}
+intersphinx_mapping = {'python': ('http://docs.python.org/2/', None),
+                       'rpy2': ('http://rpy.sourceforge.net/rpy2/doc-2.4/html/', None)}
 
 # Options for LaTeX output
 # ------------------------
@@ -205,10 +207,10 @@ latex_font_size = '11pt'
 
 latex_documents = [
     ('index', 'ipython.tex', 'IPython Documentation',
-     ur"""The IPython Development Team""", 'manual', True),
+     u"""The IPython Development Team""", 'manual', True),
     ('parallel/winhpc_index', 'winhpc_whitepaper.tex',
      'Using IPython on Windows HPC Server 2008',
-     ur"Brian E. Granger", 'manual', True)
+     u"Brian E. Granger", 'manual', True)
 ]
 
 # The name of an image file (relative to this directory) to place at the top of

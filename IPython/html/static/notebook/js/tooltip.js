@@ -40,6 +40,7 @@ define([
         var expandlink = $('<a/>').attr('href', "#").addClass("ui-corner-all") //rounded corner
         .attr('role', "button").attr('id', 'expanbutton').attr('title', 'Grow the tooltip vertically (press shift-tab twice)').click(function () {
             that.expand();
+            event.preventDefault();
         }).append(
         $('<span/>').text('Expand').addClass('ui-icon').addClass('ui-icon-plus'));
 
@@ -49,6 +50,7 @@ define([
         morelink.append(morespan);
         morelink.click(function () {
             that.showInPager(that._old_cell);
+            event.preventDefault();
         });
 
         // close the tooltip
@@ -57,18 +59,20 @@ define([
         closelink.append(closespan);
         closelink.click(function () {
             that.remove_and_cancel_tooltip(true);
+            event.preventDefault();
         });
 
         this._clocklink = $('<a/>').attr('href', "#");
         this._clocklink.attr('role', "button");
         this._clocklink.addClass('ui-button');
-        this._clocklink.attr('title', 'Tootip is not dismissed while typing for 10 seconds');
+        this._clocklink.attr('title', 'Tooltip is not dismissed while typing for 10 seconds');
         var clockspan = $('<span/>').text('Close');
         clockspan.addClass('ui-icon');
         clockspan.addClass('ui-icon-clock');
         this._clocklink.append(clockspan);
         this._clocklink.click(function () {
             that.cancel_stick();
+            event.preventDefault();
         });
 
 
@@ -116,12 +120,10 @@ define([
     };
 
     Tooltip.prototype.showInPager = function (cell) {
-        // reexecute last call in pager by appending ? to show back in pager
-        var that = this;
-        var payload = {};
-        payload.text = that._reply.content.data['text/plain'];
-        
-        this.events.trigger('open_with_text.Pager', payload);
+        /**
+         * reexecute last call in pager by appending ? to show back in pager
+         */
+        this.events.trigger('open_with_text.Pager', this._reply.content);
         this.remove_and_cancel_tooltip();
     };
 
@@ -148,9 +150,11 @@ define([
     // return true on successfully removing a visible tooltip; otherwise return
     // false.
     Tooltip.prototype.remove_and_cancel_tooltip = function (force) {
-        // note that we don't handle closing directly inside the calltip
-        // as in the completer, because it is not focusable, so won't
-        // get the event.
+        /**
+         * note that we don't handle closing directly inside the calltip
+         * as in the completer, because it is not focusable, so won't
+         * get the event.
+         */
         this.cancel_pending();
         if (!this._hidden) {
           if (force || !this._sticky) {
@@ -183,39 +187,18 @@ define([
     // easy access for julia monkey patching.
     Tooltip.last_token_re = /[a-z_][0-9a-z._]*$/gi;
 
-    Tooltip.prototype.extract_oir_token = function(line){
-        // use internally just to make the request to the kernel
-        // Feel free to shorten this logic if you are better
-        // than me in regEx
-        // basicaly you shoul be able to get xxx.xxx.xxx from
-        // something(range(10), kwarg=smth) ; xxx.xxx.xxx( firstarg, rand(234,23), kwarg1=2,
-        // remove everything between matchin bracket (need to iterate)
-        var matchBracket = /\([^\(\)]+\)/g;
-        var endBracket = /\([^\(]*$/g;
-        var oldline = line;
-
-        line = line.replace(matchBracket, "");
-        while (oldline != line) {
-            oldline = line;
-            line = line.replace(matchBracket, "");
-        }
-        // remove everything after last open bracket
-        line = line.replace(endBracket, "");
-        // reset the regex object
-        Tooltip.last_token_re.lastIndex = 0;
-        return Tooltip.last_token_re.exec(line);
-    };
-
     Tooltip.prototype._request_tooltip = function (cell, text, cursor_pos) {
         var callbacks = $.proxy(this._show, this);
         var msg_id = cell.kernel.inspect(text, cursor_pos, callbacks);
     };
 
-    // make an imediate completion request
+    // make an immediate completion request
     Tooltip.prototype.request = function (cell, hide_if_no_docstring) {
-        // request(codecell)
-        // Deal with extracting the text from the cell and counting
-        // call in a row
+        /**
+         * request(codecell)
+         * Deal with extracting the text from the cell and counting
+         * call in a row
+         */
         this.cancel_pending();
         var editor = cell.code_mirror;
         var cursor = editor.getCursor();
@@ -225,10 +208,11 @@ define([
         this._hide_if_no_docstring = hide_if_no_docstring;
 
         if(editor.somethingSelected()){
+            // get only the most recent selection.
             text = editor.getSelection();
         }
 
-        // need a permanent handel to code_mirror for future auto recall
+        // need a permanent handle to code_mirror for future auto recall
         this.code_mirror = editor;
 
         // now we treat the different number of keypress
@@ -276,8 +260,10 @@ define([
 
     // should be called with the kernel reply to actually show the tooltip
     Tooltip.prototype._show = function (reply) {
-        // move the bubble if it is not hidden
-        // otherwise fade it
+        /**
+         * move the bubble if it is not hidden
+         * otherwise fade it
+         */
         this._reply = reply;
         var content = reply.content;
         if (!content.found) {
@@ -287,33 +273,38 @@ define([
         this.name = content.name;
 
         // do some math to have the tooltip arrow on more or less on left or right
-        // width of the editor
-        var w = $(this.code_mirror.getScrollerElement()).width();
-        // ofset of the editor
-        var o = $(this.code_mirror.getScrollerElement()).offset();
+        // position of the editor
+        var cm_pos = $(this.code_mirror.getWrapperElement()).position();
 
-        // whatever anchor/head order but arrow at mid x selection
-        var anchor = this.code_mirror.cursorCoords(false);
-        var head  = this.code_mirror.cursorCoords(true);
-        var xinit = (head.left+anchor.left)/2;
-        var xinter = o.left + (xinit - o.left) / w * (w - 450);
-        var posarrowleft = xinit - xinter;
+        // anchor and head positions are local within CodeMirror element
+        var anchor = this.code_mirror.cursorCoords(false, 'local');
+        var head = this.code_mirror.cursorCoords(true, 'local');
+        // locate the target at the center of anchor, head
+        var center_left = (head.left + anchor.left) / 2;
+        // locate the left edge of the tooltip, at most 450 px left of the arrow
+        var edge_left = Math.max(center_left - 450, 0);
+        // locate the arrow at the cursor. A 24 px offset seems necessary.
+        var arrow_left = center_left - edge_left - 24;
+        
+        // locate left, top within container element
+        var left = (cm_pos.left + edge_left) + 'px';
+        var top = (cm_pos.top + head.bottom + 10) + 'px';
 
         if (this._hidden === false) {
             this.tooltip.animate({
-                'left': xinter - 30 + 'px',
-                'top': (head.bottom + 10) + 'px'
+                left: left,
+                top: top
             });
         } else {
             this.tooltip.css({
-                'left': xinter - 30 + 'px'
+                left: left
             });
             this.tooltip.css({
-                'top': (head.bottom + 10) + 'px'
+                top: top
             });
         }
         this.arrow.animate({
-            'left': posarrowleft + 'px'
+            'left': arrow_left + 'px'
         });
         
         this._hidden = false;
@@ -328,7 +319,7 @@ define([
         this.text.scrollTop(0);
     };
 
-    // Backwards compatability.
+    // Backwards compatibility.
     IPython.Tooltip = Tooltip;
 
     return {'Tooltip': Tooltip};

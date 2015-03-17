@@ -92,9 +92,9 @@ locations:
 +--------+--------------------------------------+-----------------------------------+
 |        | Unix                                 | Windows                           |
 +========+======================================+===================================+
-| System | ``/usr/share/ipython/kernels``       | ``%PROGRAMDATA%\ipython\kernels`` |
+| System | ``/usr/share/jupyter/kernels``       | ``%PROGRAMDATA%\jupyter\kernels`` |
 |        |                                      |                                   |
-|        | ``/usr/local/share/ipython/kernels`` |                                   |
+|        | ``/usr/local/share/jupyter/kernels`` |                                   |
 +--------+--------------------------------------+-----------------------------------+
 | User   |                     ``~/.ipython/kernels``                               |
 +--------+--------------------------------------+-----------------------------------+
@@ -112,30 +112,21 @@ JSON serialised dictionary containing the following keys and values:
 - **display_name**: The kernel's name as it should be displayed in the UI.
   Unlike the kernel name used in the API, this can contain arbitrary unicode
   characters.
-- **language**: The programming language which this kernel runs. This will be 
-  stored in notebook metadata. This may be used by syntax highlighters to guess
-  how to parse code in a notebook, and frontends may eventually use it to
-  identify alternative kernels that can run some code.
-- **codemirror_mode** (optional): The `codemirror mode <http://codemirror.net/mode/index.html>`_
-  to use for code in this language. This can be a string or a dictionary, as
-  passed to codemirror config. The string from *language* will be used if this is
-  not provided.
+- **language**: The name of the language of the kernel.
+  When loading notebooks, if no matching kernelspec key (may differ across machines)
+  is found, a kernel with a matching `language` will be used.
+  This allows a notebook written on any Python or Julia kernel to be properly associated
+  with the user's Python or Julia kernel, even if they aren't listed under the same name as the author's.
 - **env** (optional): A dictionary of environment variables to set for the kernel.
   These will be added to the current environment variables before the kernel is
   started.
-- **help_links** (optional): A list of dictionaries, each with keys 'text' and
-  'url'. These will be displayed in the help menu in the notebook UI.
 
 For example, the kernel.json file for IPython looks like this::
 
     {
-     "argv": ["python3", "-c", "from IPython.kernel.zmq.kernelapp import main; main()", 
-              "-f", "{connection_file}"], 
-     "codemirror_mode": {
-      "version": 3, 
-      "name": "ipython"
-     }, 
-     "display_name": "IPython (Python 3)", 
+     "argv": ["python3", "-m", "IPython.kernel",
+              "-f", "{connection_file}"],
+     "display_name": "Python 3",
      "language": "python"
     }
 

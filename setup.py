@@ -72,6 +72,7 @@ from setupbase import (
     get_bdist_wheel,
     CompileCSS,
     JavascriptVersion,
+    css_js_prerelease,
     install_symlinked,
     install_lib_symlink,
     install_scripts_for_symlink,
@@ -81,21 +82,6 @@ from setupext import setupext
 
 isfile = os.path.isfile
 pjoin = os.path.join
-
-#-----------------------------------------------------------------------------
-# Function definitions
-#-----------------------------------------------------------------------------
-
-def cleanup():
-    """Clean up the junk left around by the build process"""
-    if "develop" not in sys.argv and "egg_info" not in sys.argv:
-        try:
-            shutil.rmtree('ipython.egg-info')
-        except:
-            try:
-                os.unlink('ipython.egg-info')
-            except:
-                pass
 
 #-------------------------------------------------------------------------------
 # Handle OS specific things
@@ -227,8 +213,9 @@ class UploadWindowsInstallers(upload):
             self.upload_file('bdist_wininst', 'any', dist_file)
 
 setup_args['cmdclass'] = {
-    'build_py': check_package_data_first(git_prebuild('IPython')),
-    'sdist' : git_prebuild('IPython', sdist),
+    'build_py': css_js_prerelease(
+            check_package_data_first(git_prebuild('IPython'))),
+    'sdist' : css_js_prerelease(git_prebuild('IPython', sdist)),
     'upload_wininst' : UploadWindowsInstallers,
     'submodule' : UpdateSubmodules,
     'css' : CompileCSS,
@@ -249,12 +236,6 @@ needs_setuptools = set(('develop', 'release', 'bdist_egg', 'bdist_rpm',
            'bdist', 'bdist_dumb', 'bdist_wininst', 'bdist_wheel',
            'egg_info', 'easy_install', 'upload', 'install_egg_info',
             ))
-if sys.platform == 'win32':
-    # Depend on setuptools for install on *Windows only*
-    # If we get script-installation working without setuptools,
-    # then we can back off, but until then use it.
-    # See Issue #369 on GitHub for more
-    needs_setuptools.add('install')
 
 if len(needs_setuptools.intersection(sys.argv)) > 0:
     import setuptools
@@ -265,17 +246,21 @@ setuptools_extra_args = {}
 
 # setuptools requirements
 
+pyzmq = 'pyzmq>=13'
+
 extras_require = dict(
-    parallel = ['pyzmq>=2.1.11'],
-    qtconsole = ['pyzmq>=2.1.11', 'pygments'],
-    zmq = ['pyzmq>=2.1.11'],
+    parallel = [pyzmq],
+    qtconsole = [pyzmq, 'pygments'],
     doc = ['Sphinx>=1.1', 'numpydoc'],
-    test = ['nose>=0.10.1'],
+    test = ['nose>=0.10.1', 'requests'],
     terminal = [],
-    nbformat = ['jsonschema>=2.0', 'jsonpointer>=1.3'],
-    notebook = ['tornado>=3.1', 'pyzmq>=2.1.11', 'jinja2', 'pygments', 'mistune>=0.3'],
-    nbconvert = ['pygments', 'jinja2', 'mistune>=0.3']
+    nbformat = ['jsonschema>=2.0'],
+    notebook = ['tornado>=4.0', pyzmq, 'jinja2', 'pygments', 'mistune>=0.5'],
+    nbconvert = ['pygments', 'jinja2', 'mistune>=0.3.1']
 )
+
+if not sys.platform.startswith('win'):
+    extras_require['notebook'].append('terminado>=0.3.3')
 
 if sys.version_info < (3, 3):
     extras_require['test'].append('mock')
@@ -283,29 +268,35 @@ if sys.version_info < (3, 3):
 extras_require['notebook'].extend(extras_require['nbformat'])
 extras_require['nbconvert'].extend(extras_require['nbformat'])
 
+install_requires = []
+
+# add readline
+if sys.platform == 'darwin':
+    if 'bdist_wheel' in sys.argv[1:] or not setupext.check_for_readline():
+        install_requires.append('gnureadline')
+elif sys.platform.startswith('win'):
+    extras_require['terminal'].append('pyreadline>=2.0')
+
 everything = set()
 for deps in extras_require.values():
     everything.update(deps)
 extras_require['all'] = everything
 
-install_requires = []
-
-# add readline
-if sys.platform == 'darwin':
-    if any(arg.startswith('bdist') for arg in sys.argv) or not setupext.check_for_readline():
-        install_requires.append('gnureadline')
-elif sys.platform.startswith('win'):
-    extras_require['terminal'].append('pyreadline>=2.0')
-
-
 if 'setuptools' in sys.modules:
     # setup.py develop should check for submodules
     from setuptools.command.develop import develop
     setup_args['cmdclass']['develop'] = require_submodules(develop)
-    setup_args['cmdclass']['bdist_wheel'] = get_bdist_wheel()
+    setup_args['cmdclass']['bdist_wheel'] = css_js_prerelease(get_bdist_wheel())
     
     setuptools_extra_args['zip_safe'] = False
-    setuptools_extra_args['entry_points'] = {'console_scripts':find_entry_points()}
+    setuptools_extra_args['entry_points'] = {
+        'console_scripts': find_entry_points(),
+        'pygments.lexers': [
+            'ipythonconsole = IPython.lib.lexers:IPythonConsoleLexer',
+            'ipython = IPython.lib.lexers:IPythonLexer',
+            'ipython3 = IPython.lib.lexers:IPython3Lexer',
+        ],
+    }
     setup_args['extras_require'] = extras_require
     requires = setup_args['install_requires'] = install_requires
 
@@ -316,7 +307,7 @@ if 'setuptools' in sys.modules:
     if 'bdist_wininst' in sys.argv:
         if len(sys.argv) > 2 and \
                ('sdist' in sys.argv or 'bdist_rpm' in sys.argv):
-            print >> sys.stderr, "ERROR: bdist_wininst must be run alone. Exiting."
+            print("ERROR: bdist_wininst must be run alone. Exiting.", file=sys.stderr)
             sys.exit(1)
         setup_args['data_files'].append(
             ['Scripts', ('scripts/ipython.ico', 'scripts/ipython_nb.ico')])
@@ -346,7 +337,6 @@ setup_args.update(setuptools_extra_args)
 
 def main():
     setup(**setup_args)
-    cleanup()
 
 if __name__ == '__main__':
     main()

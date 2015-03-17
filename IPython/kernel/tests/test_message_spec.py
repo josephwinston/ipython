@@ -4,8 +4,8 @@
 # Distributed under the terms of the Modified BSD License.
 
 import re
+import sys
 from distutils.version import LooseVersion as V
-from subprocess import PIPE
 try:
     from queue import Empty  # Py 3
 except ImportError:
@@ -13,10 +13,8 @@ except ImportError:
 
 import nose.tools as nt
 
-from IPython.kernel import KernelManager
-
 from IPython.utils.traitlets import (
-    HasTraits, TraitError, Bool, Unicode, Dict, Integer, List, Enum, Any,
+    HasTraits, TraitError, Bool, Unicode, Dict, Integer, List, Enum,
 )
 from IPython.utils.py3compat import string_types, iteritems
 
@@ -150,14 +148,32 @@ class CompleteReply(Reference):
     cursor_end = Integer()
     status = Unicode()
 
+class LanguageInfo(Reference):
+    name = Unicode('python')
+    version = Unicode(sys.version.split()[0])
 
 class KernelInfoReply(Reference):
     protocol_version = Version(min='5.0')
     implementation = Unicode('ipython')
     implementation_version = Version(min='2.1')
-    language_version = Version(min='2.7')
-    language = Unicode('python')
+    language_info = Dict()
     banner = Unicode()
+    
+    def check(self, d):
+        Reference.check(self, d)
+        LanguageInfo().check(d['language_info'])
+
+
+class IsCompleteReply(Reference):
+    status = Enum((u'complete', u'incomplete', u'invalid', u'unknown'))
+    
+    def check(self, d):
+        Reference.check(self, d)
+        if d['status'] == 'incomplete':
+            IsCompleteReplyIncomplete().check(d)
+
+class IsCompleteReplyIncomplete(Reference):
+    indent = Unicode()
 
 
 # IOPub messages
@@ -172,7 +188,7 @@ Error = ExecuteReplyError
 
 class Stream(Reference):
     name = Enum((u'stdout', u'stderr'))
-    data = Unicode()
+    text = Unicode()
 
 
 class DisplayData(MimeBundle):
@@ -182,6 +198,9 @@ class DisplayData(MimeBundle):
 class ExecuteResult(MimeBundle):
     execution_count = Integer()
 
+class HistoryReply(Reference):
+    history = List(List())
+
 
 references = {
     'execute_reply' : ExecuteReply(),
@@ -189,8 +208,10 @@ references = {
     'status' : Status(),
     'complete_reply' : CompleteReply(),
     'kernel_info_reply': KernelInfoReply(),
+    'is_complete_reply': IsCompleteReply(),
     'execute_input' : ExecuteInput(),
     'execute_result' : ExecuteResult(),
+    'history_reply' : HistoryReply(),
     'error' : Error(),
     'stream' : Stream(),
     'display_data' : DisplayData(),
@@ -282,6 +303,30 @@ def test_execute_inc():
     count_2 = reply['execution_count']
     nt.assert_equal(count_2, count+1)
 
+def test_execute_stop_on_error():
+    """execute request should not abort execution queue with stop_on_error False"""
+    flush_channels()
+    
+    fail = '\n'.join([
+        # sleep to ensure subsequent message is waiting in the queue to be aborted
+        'import time',
+        'time.sleep(0.5)',
+        'raise ValueError',
+    ])
+    KC.execute(code=fail)
+    msg_id = KC.execute(code='print("Hello")')
+    KC.get_shell_msg(timeout=TIMEOUT)
+    reply = KC.get_shell_msg(timeout=TIMEOUT)
+    nt.assert_equal(reply['content']['status'], 'aborted')
+
+    flush_channels()
+
+    KC.execute(code=fail, stop_on_error=False)
+    msg_id = KC.execute(code='print("Hello")')
+    KC.get_shell_msg(timeout=TIMEOUT)
+    reply = KC.get_shell_msg(timeout=TIMEOUT)
+    nt.assert_equal(reply['content']['status'], 'ok')
+
 
 def test_user_expressions():
     flush_channels()
@@ -339,7 +384,7 @@ def test_oinfo_detail():
     content = reply['content']
     assert content['found']
     text = content['data']['text/plain']
-    nt.assert_in('Definition:', text)
+    nt.assert_in('Signature:', text)
     nt.assert_in('Source:', text)
 
 
@@ -382,6 +427,48 @@ def test_single_payload():
     next_input_pls = [pl for pl in payload if pl["source"] == "set_next_input"]
     nt.assert_equal(len(next_input_pls), 1)
 
+def test_is_complete():
+    flush_channels()
+
+    msg_id = KC.is_complete("a = 1")
+    reply = KC.get_shell_msg(timeout=TIMEOUT)
+    validate_message(reply, 'is_complete_reply', msg_id)
+
+def test_history_range():
+    flush_channels()
+    
+    msg_id_exec = KC.execute(code='x=1', store_history = True)
+    reply_exec = KC.get_shell_msg(timeout=TIMEOUT)
+    
+    msg_id = KC.history(hist_access_type = 'range', raw = True, output = True, start = 1, stop = 2, session = 0)
+    reply = KC.get_shell_msg(timeout=TIMEOUT)
+    validate_message(reply, 'history_reply', msg_id)
+    content = reply['content']
+    nt.assert_equal(len(content['history']), 1)
+
+def test_history_tail():
+    flush_channels()
+    
+    msg_id_exec = KC.execute(code='x=1', store_history = True)
+    reply_exec = KC.get_shell_msg(timeout=TIMEOUT)
+    
+    msg_id = KC.history(hist_access_type = 'tail', raw = True, output = True, n = 1, session = 0)
+    reply = KC.get_shell_msg(timeout=TIMEOUT)
+    validate_message(reply, 'history_reply', msg_id)
+    content = reply['content']
+    nt.assert_equal(len(content['history']), 1)
+
+def test_history_search():
+    flush_channels()
+    
+    msg_id_exec = KC.execute(code='x=1', store_history = True)
+    reply_exec = KC.get_shell_msg(timeout=TIMEOUT)
+    
+    msg_id = KC.history(hist_access_type = 'search', raw = True, output = True, n = 1, pattern = '*', session = 0)
+    reply = KC.get_shell_msg(timeout=TIMEOUT)
+    validate_message(reply, 'history_reply', msg_id)
+    content = reply['content']
+    nt.assert_equal(len(content['history']), 1)
 
 # IOPub channel
 
@@ -394,7 +481,7 @@ def test_stream():
     stdout = KC.iopub_channel.get_msg(timeout=TIMEOUT)
     validate_message(stdout, 'stream', msg_id)
     content = stdout['content']
-    nt.assert_equal(content['data'], u'hi\n')
+    nt.assert_equal(content['text'], u'hi\n')
 
 
 def test_display_data():

@@ -4,6 +4,10 @@
 A Qt Console for IPython
 =========================
 
+To start the Qt Console::
+
+    $> ipython qtconsole
+
 We now have a version of IPython, using the new two-process :ref:`ZeroMQ Kernel
 <ipythonzmq>`, running in a PyQt_ GUI.  This is a very lightweight widget that
 largely feels like a terminal, but provides a number of enhancements only
@@ -622,14 +626,14 @@ command-line application), there are a few options:
   objects in your application.
 
 * Start a standard IPython kernel in the process of the external Qt
-  application.  See :file:`examples/lib/ipkernel_qtapp.py` for an example.  Due
+  application. See :file:`examples/Embedding/ipkernel_qtapp.py` for an example. Due
   to IPython's two-process model, the QtConsole itself will live in another
   process with its own QApplication, and thus cannot be embedded in the main
   GUI.
 
 * Start a special IPython kernel, the
   :class:`IPython.kernel.inprocess.ipkernel.InProcessKernel`, that allows a
-  QtConsole in the same process. See :file:`examples/inprocess/embedded_qtconsole.py`
+  QtConsole in the same process. See :file:`examples/Embedding/inprocess_qtconsole.py`
   for an example. While the QtConsole can now be embedded in the main GUI, one
   cannot connect to the kernel from other consoles as there are no real ZMQ
   sockets anymore.

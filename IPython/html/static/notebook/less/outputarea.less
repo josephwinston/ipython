@@ -72,7 +72,7 @@ div.output_area {
     .vbox();
 }
 
-@media (max-width: 480px) {
+@media (max-width: @screen-xs-min) {
     // move prompts above output on small screens
     div.output_area {
         .vbox();
@@ -92,7 +92,7 @@ div.output_area pre {
 /* This class is for the output subarea inside the output_area and after
    the prompt div. */
 div.output_subarea {
-    padding: @code_padding @code_padding 0.0em @code_padding;
+    padding: @code_padding;
     .box-flex1();
 }
 
@@ -171,4 +171,20 @@ input.raw_input:focus {
 
 p.p-space {
     margin-bottom: 10px;
+}
+
+div.output_unrecognized {
+  padding: 5px;
+  font-weight: bold;
+  color: red;
+  // remove decoration from link
+  a {
+      color: inherit;
+      text-decoration: none;
+
+      &:hover {
+          color: inherit;
+          text-decoration: none;
+      }
+  }
 }

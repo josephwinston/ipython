@@ -3,6 +3,8 @@
 
 var IPython = IPython || {};
 define([], function(){
-    IPython.version = "3.0.0-dev";
+    "use strict";
+    IPython.version = "3.1.0-dev";
+    IPython._target = '_blank';
     return IPython;
 });

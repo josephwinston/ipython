@@ -1,12 +1,42 @@
 // Copyright (c) IPython Development Team.
 // Distributed under the terms of the Modified BSD License.
 
-define([
-    'base/js/namespace',
-    'jquery',
-], function(IPython, $) {
+define(function(require) {
     "use strict";
+
+    var CodeMirror = require('codemirror/lib/codemirror');
+    var IPython = require('base/js/namespace');
+    var $ = require('jquery');
     
+    /**
+     * A wrapper around bootstrap modal for easier use
+     * Pass it an option dictionary with the following properties:
+     *
+     *    - body : <string> or <DOM node>, main content of the dialog
+     *            if pass a <string> it will be wrapped in a p tag and
+     *            html element escaped, unless you specify sanitize=false
+     *            option.
+     *    - title : Dialog title, default to empty string.
+     *    - buttons : dict of btn_options who keys are button label.
+     *            see btn_options below for description
+     *    - open : callback to trigger on dialog open.
+     *    - destroy:
+     *    - notebook : notebook instance
+     *    - keyboard_manager: keyboard manager instance.
+     *
+     *  Unlike bootstrap modals, the backdrop options is set by default 
+     *  to 'static'.
+     *
+     *  The rest of the options are passed as is to bootstrap modals. 
+     *
+     *  btn_options: dict with the following property:
+     *  
+     *    - click : callback to trigger on click
+     *    - class : css classes to add to button.
+     *
+     *
+     *
+     **/
     var modal = function (options) {
 
         var modal = $("<div/>")
@@ -19,6 +49,9 @@ define([
         var dialog_content = $("<div/>")
             .addClass("modal-content")
             .appendTo(dialog);
+        if(typeof(options.body) === 'string' && options.sanitize !== false){
+            options.body = $("<p/>").text(options.body)
+        }
         dialog_content.append(
             $("<div/>")
                 .addClass("modal-header")
@@ -86,8 +119,21 @@ define([
         if (options.keyboard_manager) {
             options.keyboard_manager.disable();
         }
+
+        options.backdrop = options.backdrop || 'static';
         
         return modal.modal(options);
+    };
+
+    var kernel_modal = function (options) {
+        /**
+         * only one kernel dialog should be open at a time -- but
+         * other modal dialogs can still be open
+         */
+        $('.kernel-modal').modal('hide');
+        var dialog = modal(options);
+        dialog.addClass('kernel-modal');
+        return dialog;
     };
 
     var edit_metadata = function (options) {
@@ -130,7 +176,9 @@ define([
             buttons: {
                 OK: { class : "btn-primary",
                     click: function() {
-                        // validate json and set it
+                        /**
+                         * validate json and set it
+                         */
                         var new_md;
                         try {
                             new_md = JSON.parse(editor.getValue());
@@ -153,6 +201,7 @@ define([
     
     var dialog = {
         modal : modal,
+        kernel_modal : kernel_modal,
         edit_metadata : edit_metadata,
     };
 

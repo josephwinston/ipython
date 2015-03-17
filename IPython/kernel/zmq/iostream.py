@@ -116,6 +116,10 @@ class OutStream(object):
     def close(self):
         self.pub_socket = None
 
+    @property
+    def closed(self):
+        return self.pub_socket is None
+
     def _flush_from_subprocesses(self):
         """flush possible pub data from subprocesses into my buffer"""
         if not self._pipe_flag or not self._is_master_process():
@@ -163,7 +167,7 @@ class OutStream(object):
             data = self._flush_buffer()
             
             if data:
-                content = {u'name':self.name, u'data':data}
+                content = {u'name':self.name, u'text':data}
                 msg = self.session.send(self.pub_socket, u'stream', content=content,
                                        parent=self.parent_header, ident=self.topic)
             

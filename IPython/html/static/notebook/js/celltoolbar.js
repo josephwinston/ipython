@@ -4,21 +4,26 @@
 define([
     'base/js/namespace',
     'jquery',
-], function(IPython, $) {
+    'base/js/events'
+], function(IPython, $, events) {
     "use strict";
 
     var CellToolbar = function (options) {
-        // Constructor
-        //
-        // Parameters:
-        //  options: dictionary
-        //      Dictionary of keyword arguments.
-        //          events: $(Events) instance 
-        //          cell: Cell instance
-        //          notebook: Notebook instance 
+        /**
+         * Constructor
+         *
+         * Parameters:
+         *  options: dictionary
+         *      Dictionary of keyword arguments.
+         *          events: $(Events) instance 
+         *          cell: Cell instance
+         *          notebook: Notebook instance 
+         *
+         *  TODO: This leaks, when cell are deleted
+         *  There is still a reference to each celltoolbars.
+         */
         CellToolbar._instances.push(this);
         this.notebook = options.notebook;
-        this.events = options.events;
         this.cell = options.cell;
         this.create_element();
         this.rebuild();
@@ -111,7 +116,7 @@ define([
      * @param name {String} name to use to refer to the callback. It is advised to use a prefix with the name
      * for easier sorting and avoid collision
      * @param callback {function(div, cell)} callback that will be called to generate the ui element
-     * @param [cell_types] {List of String|undefined} optional list of cell types. If present the UI element
+     * @param [cell_types] {List_of_String|undefined} optional list of cell types. If present the UI element
      * will be added only to cells of types in the list.
      *
      *
@@ -160,7 +165,7 @@ define([
      * @method register_preset
      * @param name {String} name to use to refer to the preset. It is advised to use a prefix with the name
      * for easier sorting and avoid collision
-     * @param  preset_list {List of String} reverse order of the button in the toolbar. Each String of the list
+     * @param  preset_list {List_of_String} reverse order of the button in the toolbar. Each String of the list
      *          should correspond to a name of a registerd callback.
      *
      * @private
@@ -175,14 +180,31 @@ define([
      *      CellToolbar.register_preset('foo.foo_preset1', ['foo.c1', 'foo.c2', 'foo.c5'])
      *      CellToolbar.register_preset('foo.foo_preset2', ['foo.c4', 'foo.c5'])
      */
-    CellToolbar.register_preset = function(name, preset_list, notebook, events) {
+    CellToolbar.register_preset = function(name, preset_list, notebook) {
         CellToolbar._presets[name] = preset_list;
         events.trigger('preset_added.CellToolbar', {name: name});
         // When "register_callback" is called by a custom extension, it may be executed after notebook is loaded.
         // In that case, activate the preset if needed.
-        if (notebook && notebook.metadata && notebook.metadata.celltoolbar === name)
-            CellToolbar.activate_preset(name, events);
+        if (notebook && notebook.metadata && notebook.metadata.celltoolbar === name){
+            CellToolbar.activate_preset(name);
+        }
     };
+
+    /**
+     * unregister the selected preset, 
+     *
+     * return true if preset successfully unregistered
+     * false otherwise
+     *
+     **/
+    CellToolbar.unregister_preset = function(name){
+        if(CellToolbar._presets[name]){
+            delete CellToolbar._presets[name];
+            events.trigger('unregistered_preset.CellToolbar', {name: name});
+            return true
+        }
+        return false
+    }
 
 
     /**
@@ -214,7 +236,7 @@ define([
      *
      *      CellToolbar.activate_preset('foo.foo_preset1');
      */
-    CellToolbar.activate_preset = function(preset_name, events){
+    CellToolbar.activate_preset = function(preset_name){
         var preset = CellToolbar._presets[preset_name];
 
         if(preset !== undefined){
@@ -222,9 +244,7 @@ define([
             CellToolbar.rebuild_all();
         }
 
-        if (events) {
-            events.trigger('preset_activated.CellToolbar', {name: preset_name});
-        }
+        events.trigger('preset_activated.CellToolbar', {name: preset_name});
     };
 
 
@@ -246,9 +266,11 @@ define([
      * @method rebuild
      */
     CellToolbar.prototype.rebuild = function(){
-        // strip evrything from the div
-        // which is probably inner_element
-        // or this.element.
+        /**
+         * strip evrything from the div
+         * which is probably inner_element
+         * or this.element.
+         */
         this.inner_element.empty();
         this.ui_controls_list = [];
 
@@ -278,7 +300,7 @@ define([
         }
 
         // If there are no controls or the cell is a rendered TextCell hide the toolbar.
-        if (!this.ui_controls_list.length || (this.cell.cell_type != 'code' && this.cell.rendered)) {
+        if (!this.ui_controls_list.length) {
             this.hide();
         } else {
             this.show();
@@ -286,8 +308,6 @@ define([
     };
 
 
-    /**
-     */
     CellToolbar.utils = {};
 
 
@@ -348,11 +368,42 @@ define([
 
 
     /**
+     * A utility function to generate bindings between a input field and cell/metadata
+     * @method utils.input_ui_generator
+     * @static
+     *
+     * @param name {string} Label in front of the input field
+     * @param setter {function( cell, newValue )}
+     *        A setter method to set the newValue
+     * @param getter {function( cell )}
+     *        A getter methods which return the current value.
+     *
+     * @return callback {function( div, cell )} Callback to be passed to `register_callback`
+     *
+     */
+    CellToolbar.utils.input_ui_generator = function(name, setter, getter){
+        return function(div, cell, celltoolbar) {
+            var button_container = $(div);
+
+            var text = $('<input/>').attr('type', 'text');
+            var lbl = $('<label/>').append($('<span/>').text(name));
+            lbl.append(text);
+            text.attr("value", getter(cell));
+
+            text.keyup(function(){
+                setter(cell, text.val());
+            });
+            button_container.append($('<span/>').append(lbl));
+            IPython.keyboard_manager.register_events(text);
+        };
+    };
+
+    /**
      * A utility function to generate bindings between a dropdown list cell
      * @method utils.select_ui_generator
      * @static
      *
-     * @param list_list {list of sublist} List of sublist of metadata value and name in the dropdown list.
+     * @param list_list {list_of_sublist} List of sublist of metadata value and name in the dropdown list.
      *        subslit shoud contain 2 element each, first a string that woul be displayed in the dropdown list,
      *        and second the corresponding value to  be passed to setter/return by getter. the corresponding value 
      *        should not be "undefined" or behavior can be unexpected.
@@ -395,7 +446,7 @@ define([
         return function(div, cell, celltoolbar) {
             var button_container = $(div);
             var lbl = $("<label/>").append($('<span/>').text(label));
-            var select = $('<select/>').addClass('ui-widget ui-widget-content');
+            var select = $('<select/>');
             for(var i=0; i < list_list.length; i++){
                 var opt = $('<option/>')
                     .attr('value', list_list[i][1])

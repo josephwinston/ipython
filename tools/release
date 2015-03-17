@@ -15,14 +15,18 @@ distdir = pjoin(ipdir, 'dist')
 
 # Where I keep static backups of each release
 ipbackupdir = os.path.expanduser('~/ipython/backup')
+if not os.path.exists(ipbackupdir):
+    os.makedirs(ipbackupdir)
 
 # Start in main IPython dir
 cd(ipdir)
 
 # Load release info
-execfile(pjoin('IPython','core','release.py'))
+execfile(pjoin('IPython','core','release.py'), globals())
 # ensure js version is in sync
 sh('./setup.py jsversion')
+# build minified css and sourcemaps
+sh('./setup.py css -x -f')
 
 # Build site addresses for file uploads
 release_site = '%s/release/%s' % (archive, version)
@@ -46,6 +50,10 @@ sh('mv ipython-*.tgz %s' % ipbackupdir)
 # Build release files
 sh('./build_release %s' % ipdir)
 
+if 'upload' not in sys.argv:
+    print("`./release upload` to register and release")
+    sys.exit(0)
+
 # Register with the Python Package Index (PyPI)
 print( 'Registering with PyPI...')
 cd(ipdir)
@@ -53,14 +61,14 @@ sh('./setup.py register')
 
 # Upload all files
 sh(sdists + ' upload')
-for py in ('2.7', '3.3'):
-    sh('python%s setupegg.py bdist_wheel' % py)
+for py in ('2.7', '3.4'):
+    sh('python%s setupegg.py bdist_wheel upload' % py)
 
 cd(distdir)
 print( 'Uploading distribution files...')
 
 for fname in os.listdir('.'):
-    # GitHub doesn't have an API for uploads at the moment
+    # TODO: update to GitHub releases API
     continue
     print('uploading %s to GitHub' % fname)
     desc = "IPython %s source distribution" % version

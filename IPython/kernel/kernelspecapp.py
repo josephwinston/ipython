@@ -11,25 +11,18 @@ from IPython.core.application import (
 )
 from IPython.utils.traitlets import Instance, Dict, Unicode, Bool
 
-from .kernelspec import KernelSpecManager
-
-def _pythonfirst(s):
-    "Sort key function that will put strings starting with 'python' first."
-    if s.startswith('python'):
-        # Space is not valid in kernel names, so this should sort first
-        return ' ' + s
-    return s
+from .kernelspec import KernelSpecManager, _pythonfirst
 
 class ListKernelSpecs(BaseIPythonApplication):
     description = """List installed kernel specifications."""
     kernel_spec_manager = Instance(KernelSpecManager)
-    
+
     # Not all of the base aliases are meaningful (e.g. profile)
     aliases = {k: base_aliases[k] for k in ['ipython-dir', 'log-level']}
     flags = {'debug': base_flags['debug'],}
 
     def _kernel_spec_manager_default(self):
-        return KernelSpecManager(ipython_dir=self.ipython_dir)
+        return KernelSpecManager(parent=self, ipython_dir=self.ipython_dir)
 
     def start(self):
         print("Available kernels:")
@@ -52,10 +45,10 @@ class InstallKernelSpec(BaseIPythonApplication):
     def _kernel_name_default(self):
         return os.path.basename(self.sourcedir)
 
-    system = Bool(False, config=True,
+    user = Bool(False, config=True,
         help="""
-        Try to install the kernel spec to the systemwide directory instead of
-        the per-user directory.
+        Try to install the kernel spec to the per-user directory instead of
+        the system or environment directory.
         """
     )
     replace = Bool(False, config=True,
@@ -66,8 +59,8 @@ class InstallKernelSpec(BaseIPythonApplication):
     for k in ['ipython-dir', 'log-level']:
         aliases[k] = base_aliases[k]
 
-    flags = {'system': ({'InstallKernelSpec': {'system': True}},
-                "Install to the systemwide kernel registry"),
+    flags = {'user': ({'InstallKernelSpec': {'user': True}},
+                "Install to the per-user kernel registry"),
              'replace': ({'InstallKernelSpec': {'replace': True}},
                 "Replace any existing kernel spec with this name."),
              'debug': base_flags['debug'],
@@ -86,7 +79,7 @@ class InstallKernelSpec(BaseIPythonApplication):
         try:
             self.kernel_spec_manager.install_kernel_spec(self.sourcedir,
                                                  kernel_name=self.kernel_name,
-                                                 system=self.system,
+                                                 user=self.user,
                                                  replace=self.replace,
                                                 )
         except OSError as e:
@@ -98,15 +91,43 @@ class InstallKernelSpec(BaseIPythonApplication):
                 self.exit(1)
             raise
 
+class InstallNativeKernelSpec(BaseIPythonApplication):
+    description = """Install the native kernel spec directory for this Python."""
+    kernel_spec_manager = Instance(KernelSpecManager)
+
+    def _kernel_spec_manager_default(self):
+        return KernelSpecManager(ipython_dir=self.ipython_dir)
+
+    user = Bool(False, config=True,
+        help="""
+        Try to install the kernel spec to the per-user directory instead of
+        the system or environment directory.
+        """
+    )
+
+    # Not all of the base aliases are meaningful (e.g. profile)
+    aliases = {k: base_aliases[k] for k in ['ipython-dir', 'log-level']}
+    flags = {'user': ({'InstallNativeKernelSpec': {'user': True}},
+                "Install to the per-user kernel registry"),
+             'debug': base_flags['debug'],
+            }
+
+    def start(self):
+        try:
+            self.kernel_spec_manager.install_native_kernel_spec(user=self.user)
+        except OSError as e:
+            self.exit(e)
+
 class KernelSpecApp(Application):
     name = "ipython kernelspec"
     description = """Manage IPython kernel specifications."""
 
-    subcommands = Dict(dict(
-        list = (ListKernelSpecs, ListKernelSpecs.description.splitlines()[0]),
-        install = (InstallKernelSpec, InstallKernelSpec.description.splitlines()[0])
-    ))
-    
+    subcommands = Dict({
+        'list': (ListKernelSpecs, ListKernelSpecs.description.splitlines()[0]),
+        'install': (InstallKernelSpec, InstallKernelSpec.description.splitlines()[0]),
+        'install-self': (InstallNativeKernelSpec, InstallNativeKernelSpec.description.splitlines()[0]),
+    })
+
     aliases = {}
     flags = {}
 

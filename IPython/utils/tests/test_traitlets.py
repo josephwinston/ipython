@@ -16,10 +16,11 @@ import nose.tools as nt
 from nose import SkipTest
 
 from IPython.utils.traitlets import (
-    HasTraits, MetaHasTraits, TraitType, Any, CBytes, Dict,
+    HasTraits, MetaHasTraits, TraitType, Any, Bool, CBytes, Dict,
     Int, Long, Integer, Float, Complex, Bytes, Unicode, TraitError,
-    Undefined, Type, This, Instance, TCPAddress, List, Tuple,
-    ObjectName, DottedObjectName, CRegExp, link
+    Union, Undefined, Type, This, Instance, TCPAddress, List, Tuple,
+    ObjectName, DottedObjectName, CRegExp, link, directional_link,
+    EventfulList, EventfulDict, ForwardDeclaredType, ForwardDeclaredInstance,
 )
 from IPython.utils import py3compat
 from IPython.testing.decorators import skipif
@@ -405,6 +406,13 @@ class TestHasTraits(TestCase):
         a = A()
         self.assertEqual(a.trait_metadata('i','config_key'), 'MY_VALUE')
 
+    def test_trait_metadata_default(self):
+        class A(HasTraits):
+            i = Int()
+        a = A()
+        self.assertEqual(a.trait_metadata('i', 'config_key'), None)
+        self.assertEqual(a.trait_metadata('i', 'config_key', 'default'), 'default')
+
     def test_traits(self):
         class A(HasTraits):
             i = Int
@@ -676,6 +684,20 @@ class TestThis(TestCase):
         self.assertEqual(f.t, b)
         self.assertRaises(TraitError, setattr, b, 't', f)
 
+    def test_this_in_container(self):
+
+        class Tree(HasTraits):
+            value = Unicode()
+            leaves = List(This())
+
+        tree = Tree(
+            value='foo',
+            leaves=[Tree('bar'), Tree('buzz')]
+        )
+
+        with self.assertRaises(TraitError):
+            tree.leaves = [1, 2]
+
 class TraitTestBase(TestCase):
     """A best testing class for basic trait types."""
 
@@ -738,6 +760,25 @@ class AnyTraitTest(TraitTestBase):
     _good_values   = [10.0, 'ten', u'ten', [10], {'ten': 10},(10,), None, 1j]
     _bad_values    = []
 
+class UnionTrait(HasTraits):
+
+    value = Union([Type(), Bool()])
+
+class UnionTraitTest(TraitTestBase):
+
+    obj = UnionTrait(value='IPython.utils.ipstruct.Struct')
+    _good_values = [int, float, True]
+    _bad_values = [[], (0,), 1j]
+
+class OrTrait(HasTraits):
+
+    value = Bool() | Unicode()
+
+class OrTraitTest(TraitTestBase):
+
+    obj = OrTrait()
+    _good_values = [True, False, 'ten']
+    _bad_values = [[], (0,), 1j]
 
 class IntTrait(HasTraits):
 
@@ -931,6 +972,19 @@ class TestList(TraitTestBase):
 class Foo(object):
     pass
 
+class NoneInstanceListTrait(HasTraits):
+    
+    value = List(Instance(Foo, allow_none=False))
+
+class TestNoneInstanceList(TraitTestBase):
+
+    obj = NoneInstanceListTrait()
+
+    _default_value = []
+    _good_values = [[Foo(), Foo()], []]
+    _bad_values = [[None], [Foo(), None]]
+
+
 class InstanceListTrait(HasTraits):
 
     value = List(Instance(__name__+'.Foo'))
@@ -946,6 +1000,19 @@ class TestInstanceList(TraitTestBase):
     _default_value = []
     _good_values = [[Foo(), Foo(), None], None]
     _bad_values = [['1', 2,], '1', [Foo]]
+
+class UnionListTrait(HasTraits):
+
+    value = List(Int() | Bool())
+
+class TestUnionListTrait(HasTraits):
+
+    obj = UnionListTrait()
+
+    _default_value = []
+    _good_values = [[True, 1], [False, True]]
+    _bad_values = [[1, 'True'], False]
+
 
 class LenListTrait(HasTraits):
 
@@ -1034,7 +1101,7 @@ class TestCRegExp(TraitTestBase):
 
     _default_value = re.compile(r'')
     _good_values = [r'\d+', re.compile(r'\d+')]
-    _bad_values = [r'(', None, ()]
+    _bad_values = ['(', None, ()]
 
 class DictTrait(HasTraits):
     value = Dict()
@@ -1046,6 +1113,13 @@ def test_dict_assignment():
     d['a'] = 5
     nt.assert_equal(d, c.value)
     nt.assert_true(c.value is d)
+
+def test_dict_default_value():
+    """Check that the `{}` default value of the Dict traitlet constructor is
+    actually copied."""
+
+    d1, d2 = Dict(), Dict()
+    nt.assert_false(d1.get_default_value() is d2.get_default_value())
 
 class TestLink(TestCase):
     def test_connect_same(self):
@@ -1146,6 +1220,109 @@ class TestLink(TestCase):
         a.value = 4
         self.assertEqual(''.join(callback_count), 'ab')
         del callback_count[:]
+    
+    def test_validate_args(self):
+        class A(HasTraits):
+            value = Int()
+        class B(HasTraits):
+            count = Int()
+        a = A(value=9)
+        b = B(count=8)
+        b.value = 5
+        
+        with self.assertRaises(TypeError):
+            link((a, 'value'))
+        with self.assertRaises(TypeError):
+            link((a, 'value', 'count'), (b, 'count'))
+        with self.assertRaises(TypeError):
+            link((a, 'value'), (b, 'value'))
+        with self.assertRaises(TypeError):
+            link((a, 'traits'), (b, 'count'))
+
+
+class TestDirectionalLink(TestCase):
+    def test_connect_same(self):
+        """Verify two traitlets of the same type can be linked together using directional_link."""
+
+        # Create two simple classes with Int traitlets.
+        class A(HasTraits):
+            value = Int()
+        a = A(value=9)
+        b = A(value=8)
+
+        # Conenct the two classes.
+        c = directional_link((a, 'value'), (b, 'value'))
+
+        # Make sure the values are the same at the point of linking.
+        self.assertEqual(a.value, b.value)
+
+        # Change one the value of the source and check that it synchronizes the target.
+        a.value = 5
+        self.assertEqual(b.value, 5)
+        # Change one the value of the target and check that it has no impact on the source
+        b.value = 6
+        self.assertEqual(a.value, 5)
+
+    def test_link_different(self):
+        """Verify two traitlets of different types can be linked together using link."""
+
+        # Create two simple classes with Int traitlets.
+        class A(HasTraits):
+            value = Int()
+        class B(HasTraits):
+            count = Int()
+        a = A(value=9)
+        b = B(count=8)
+
+        # Conenct the two classes.
+        c = directional_link((a, 'value'), (b, 'count'))
+
+        # Make sure the values are the same at the point of linking.
+        self.assertEqual(a.value, b.count)
+
+        # Change one the value of the source and check that it synchronizes the target.
+        a.value = 5
+        self.assertEqual(b.count, 5)
+        # Change one the value of the target and check that it has no impact on the source
+        b.value = 6
+        self.assertEqual(a.value, 5)
+
+    def test_unlink(self):
+        """Verify two linked traitlets can be unlinked."""
+
+        # Create two simple classes with Int traitlets.
+        class A(HasTraits):
+            value = Int()
+        a = A(value=9)
+        b = A(value=8)
+
+        # Connect the two classes.
+        c = directional_link((a, 'value'), (b, 'value'))
+        a.value = 4
+        c.unlink()
+
+        # Change one of the values to make sure they don't stay in sync.
+        a.value = 5
+        self.assertNotEqual(a.value, b.value)
+
+    def test_validate_args(self):
+        class A(HasTraits):
+            value = Int()
+        class B(HasTraits):
+            count = Int()
+        a = A(value=9)
+        b = B(count=8)
+        b.value = 5
+        
+        with self.assertRaises(TypeError):
+            directional_link((a, 'value'))
+        with self.assertRaises(TypeError):
+            directional_link((a, 'value', 'count'), (b, 'count'))
+        with self.assertRaises(TypeError):
+            directional_link((a, 'value'), (b, 'value'))
+        with self.assertRaises(TypeError):
+            directional_link((a, 'traits'), (b, 'count'))
+
 
 class Pickleable(HasTraits):
     i = Int()
@@ -1171,4 +1348,165 @@ def test_pickle_hastraits():
         c2 = pickle.loads(p)
         nt.assert_equal(c2.i, c.i)
         nt.assert_equal(c2.j, c.j)
-    
+
+class TestEventful(TestCase):
+
+    def test_list(self):
+        """Does the EventfulList work?"""
+        event_cache = []
+
+        class A(HasTraits):
+            x = EventfulList([c for c in 'abc'])
+        a = A()
+        a.x.on_events(lambda i, x: event_cache.append('insert'), \
+            lambda i, x: event_cache.append('set'), \
+            lambda i: event_cache.append('del'), \
+            lambda: event_cache.append('reverse'), \
+            lambda *p, **k: event_cache.append('sort'))
+
+        a.x.remove('c')
+        # ab
+        a.x.insert(0, 'z')
+        # zab
+        del a.x[1]
+        # zb
+        a.x.reverse()
+        # bz 
+        a.x[1] = 'o'
+        # bo
+        a.x.append('a')
+        # boa
+        a.x.sort()
+        # abo
+
+        # Were the correct events captured?
+        self.assertEqual(event_cache, ['del', 'insert', 'del', 'reverse', 'set', 'set', 'sort'])
+
+        # Is the output correct?
+        self.assertEqual(a.x, [c for c in 'abo'])
+
+    def test_dict(self):
+        """Does the EventfulDict work?"""
+        event_cache = []
+
+        class A(HasTraits):
+            x = EventfulDict({c: c for c in 'abc'})
+        a = A()
+        a.x.on_events(lambda k, v: event_cache.append('add'), \
+            lambda k, v: event_cache.append('set'), \
+            lambda k: event_cache.append('del'))
+
+        del a.x['c']
+        # ab
+        a.x['z'] = 1
+        # abz
+        a.x['z'] = 'z'
+        # abz
+        a.x.pop('a')
+        # bz 
+
+        # Were the correct events captured?
+        self.assertEqual(event_cache, ['del', 'add', 'set', 'del'])
+
+        # Is the output correct?
+        self.assertEqual(a.x, {c: c for c in 'bz'})
+
+###
+# Traits for Forward Declaration Tests
+###
+class ForwardDeclaredInstanceTrait(HasTraits):
+
+    value = ForwardDeclaredInstance('ForwardDeclaredBar')
+
+class ForwardDeclaredTypeTrait(HasTraits):
+
+    value = ForwardDeclaredType('ForwardDeclaredBar')
+
+class ForwardDeclaredInstanceListTrait(HasTraits):
+
+    value = List(ForwardDeclaredInstance('ForwardDeclaredBar'))
+
+class ForwardDeclaredTypeListTrait(HasTraits):
+
+    value = List(ForwardDeclaredType('ForwardDeclaredBar'))
+###
+# End Traits for Forward Declaration Tests
+###
+
+###
+# Classes for Forward Declaration Tests
+###
+class ForwardDeclaredBar(object):
+    pass
+
+class ForwardDeclaredBarSub(ForwardDeclaredBar):
+    pass
+###
+# End Classes for Forward Declaration Tests
+###
+
+###
+# Forward Declaration Tests
+###
+class TestForwardDeclaredInstanceTrait(TraitTestBase):
+
+    obj = ForwardDeclaredInstanceTrait()
+    _default_value = None
+    _good_values = [None, ForwardDeclaredBar(), ForwardDeclaredBarSub()]
+    _bad_values = ['foo', 3, ForwardDeclaredBar, ForwardDeclaredBarSub]
+
+class TestForwardDeclaredTypeTrait(TraitTestBase):
+
+    obj = ForwardDeclaredTypeTrait()
+    _default_value = None
+    _good_values = [None, ForwardDeclaredBar, ForwardDeclaredBarSub]
+    _bad_values = ['foo', 3, ForwardDeclaredBar(), ForwardDeclaredBarSub()]
+
+class TestForwardDeclaredInstanceList(TraitTestBase):
+
+    obj = ForwardDeclaredInstanceListTrait()
+
+    def test_klass(self):
+        """Test that the instance klass is properly assigned."""
+        self.assertIs(self.obj.traits()['value']._trait.klass, ForwardDeclaredBar)
+
+    _default_value = []
+    _good_values = [
+        [ForwardDeclaredBar(), ForwardDeclaredBarSub(), None],
+        [None],
+        [],
+        None,
+    ]
+    _bad_values = [
+        ForwardDeclaredBar(),
+        [ForwardDeclaredBar(), 3],
+        '1',
+        # Note that this is the type, not an instance.
+        [ForwardDeclaredBar]
+    ]
+
+class TestForwardDeclaredTypeList(TraitTestBase):
+
+    obj = ForwardDeclaredTypeListTrait()
+
+    def test_klass(self):
+        """Test that the instance klass is properly assigned."""
+        self.assertIs(self.obj.traits()['value']._trait.klass, ForwardDeclaredBar)
+
+    _default_value = []
+    _good_values = [
+        [ForwardDeclaredBar, ForwardDeclaredBarSub, None],
+        [],
+        [None],
+        None,
+    ]
+    _bad_values = [
+        ForwardDeclaredBar,
+        [ForwardDeclaredBar, 3],
+        '1',
+        # Note that this is an instance, not the type.
+        [ForwardDeclaredBar()]
+    ]
+###
+# End Forward Declaration Tests
+###
